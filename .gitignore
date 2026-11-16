@@ -1,0 +1,5 @@
+# Runtime state: the LinkedIn session cookie, the Chrome profile it drives,
+# and the swipe history. Never commit this.
+data/
+
+node_modules/
