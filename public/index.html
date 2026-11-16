@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>in·swipe</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0a0e14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="in·swipe">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand"><span class="mark">in</span><span class="dot">·</span>swipe</div>
+  <button id="quota" class="quota" type="button" aria-label="Today's invites">–</button>
+  <button id="openSettings" class="icon-btn" type="button" aria-label="Settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5Zm7.4-2.6.1-.9-.1-.9 1.9-1.5a.5.5 0 0 0 .1-.6l-1.8-3.1a.5.5 0 0 0-.6-.2l-2.2.9a7.3 7.3 0 0 0-1.6-.9l-.3-2.4a.5.5 0 0 0-.5-.4h-3.6a.5.5 0 0 0-.5.4l-.3 2.4a7.3 7.3 0 0 0-1.6.9l-2.2-.9a.5.5 0 0 0-.6.2L3.3 9a.5.5 0 0 0 .1.6l1.9 1.5-.1.9.1.9-1.9 1.5a.5.5 0 0 0-.1.6l1.8 3.1a.5.5 0 0 0 .6.2l2.2-.9a7.3 7.3 0 0 0 1.6.9l.3 2.4a.5.5 0 0 0 .5.4h3.6a.5.5 0 0 0 .5-.4l.3-2.4a7.3 7.3 0 0 0 1.6-.9l2.2.9a.5.5 0 0 0 .6-.2l1.8-3.1a.5.5 0 0 0-.1-.6Z"/></svg>
+  </button>
+</header>
+
+<main id="deck" class="deck" aria-live="polite">
+  <div id="empty" class="empty hidden">
+    <p id="emptyTitle">Loading suggestions…</p>
+    <p id="emptyBody" class="muted"></p>
+    <button id="emptyAction" class="ghost-btn hidden" type="button">Refresh</button>
+  </div>
+</main>
+
+<nav class="actions" aria-label="Swipe actions">
+  <button id="btnPass" class="round pass" type="button" aria-label="Skip">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3Z"/></svg>
+  </button>
+  <button id="btnUndo" class="round undo" type="button" aria-label="Undo last skip">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8Z"/></svg>
+  </button>
+  <button id="btnConnect" class="round connect" type="button" aria-label="Send connection request">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6Z"/></svg>
+  </button>
+</nav>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="sheet-inner">
+    <div class="sheet-grip"></div>
+    <h2>Settings</h2>
+
+    <section>
+      <h3>LinkedIn session</h3>
+      <p id="sessionState" class="muted small">Checking…</p>
+      <label class="field">
+        <span>Paste your <code>li_at</code> cookie</span>
+        <input id="liAt" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AQEDAS…">
+      </label>
+      <button id="saveSession" class="ghost-btn" type="button">Use this cookie</button>
+      <p class="muted small">Or just sign in to LinkedIn in the Chrome window the server opened on your Mac.</p>
+    </section>
+
+    <section>
+      <h3>Rate limits</h3>
+      <label class="field row"><span>Invites per hour</span><input id="maxPerHour" type="number" min="1" max="100" inputmode="numeric"></label>
+      <label class="field row"><span>Invites per day</span><input id="maxPerDay" type="number" min="1" max="150" inputmode="numeric"></label>
+      <label class="field row"><span>Seconds between</span><input id="minGapSeconds" type="number" min="0" max="100" inputmode="numeric"></label>
+      <button id="saveLimits" class="ghost-btn" type="button">Save limits</button>
+      <p class="muted small">LinkedIn restricts accounts that invite in bursts. Low and slow is the point.</p>
+    </section>
+
+    <section>
+      <h3>This session</h3>
+      <p id="statsLine" class="muted small">–</p>
+      <button id="refreshDeck" class="ghost-btn" type="button">Reload suggestions</button>
+    </section>
+
+    <button id="closeSettings" class="primary-btn" type="button">Done</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

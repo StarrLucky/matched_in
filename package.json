@@ -1,0 +1,14 @@
+{
+  "name": "linkedin-swipe",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tinder-style swipe deck for LinkedIn connection suggestions, served to your iPhone from your Mac.",
+  "scripts": {
+    "start": "node server/server.mjs",
+    "demo": "DEMO=1 node server/server.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
