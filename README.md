@@ -58,6 +58,24 @@ npm run demo
 
 Fixture profiles, no Chrome, no LinkedIn, nothing sent. Useful for trying the feel of the deck.
 
+## Which Chrome it drives
+
+The server only ever drives the Chrome **it started itself**, recorded in `data/chrome-profile.lock`
+along with its port and pid. If something else already holds the debugging port — Vivaldi, Brave,
+Edge or a Chrome you started with `--remote-debugging-port` yourself — the server steps over it and
+takes the next free port, and says so on startup:
+
+```
+Ports 9222 belong to another browser — not touching it.
+Chrome profile: …/data/chrome-profile (just launched) on port 9223
+```
+
+That matters: attaching to the wrong browser would mean clicking Connect in a window you are using.
+
+If you quit that Chrome window, the next `npm start` opens a new one. If you see
+*"A Chrome is already using …"*, a window with that profile is open outside the server's knowledge —
+quit it and start again.
+
 ## Rate limits
 
 Defaults: **12 invites/hour, 35/day, 6 seconds apart** — all editable in Settings.
@@ -95,7 +113,7 @@ Wi-Fi could. Every `/api/*` call requires the key from the printed URL. The app 
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `7777` | HTTP port for the app |
-| `CDP_PORT` | `9222` | Chrome remote debugging port |
+| `CDP_PORT` | `9222` | First debugging port to try; busy ports are skipped |
 | `SWIPE_KEY` | random | Access key; random each start unless set |
 | `CHROME_BIN` | auto | Path to Chrome/Chromium/Edge/Brave |
 | `DEMO` | — | `1` for fixture mode |

@@ -1,7 +1,9 @@
 // Launches a dedicated Chrome profile with remote debugging and talks to it over CDP.
 // A dedicated profile means we never fight with the Chrome you use day to day.
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { createConnection } from 'node:net';
+import { dirname } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const CHROME_PATHS = [
@@ -66,6 +68,22 @@ class CdpSocket {
   close() { try { this.ws?.close(); } catch { /* already gone */ } }
 }
 
+/** True if anything at all holds the TCP port — CDP or not. */
+function isAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+function portBusy(port) {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host: '127.0.0.1', port });
+    const done = (busy) => { socket.destroy(); resolve(busy); };
+    socket.setTimeout(700);
+    socket.once('connect', () => done(true));
+    socket.once('timeout', () => done(false));
+    socket.once('error', () => done(false));
+  });
+}
+
 async function httpJson(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error(`${url} -> ${res.status}`);
@@ -89,28 +107,79 @@ export class Browser {
     catch { return false; }
   }
 
-  /** Start Chrome if it is not already listening on our debug port. */
+  get lockFile() { return `${this.userDataDir}.lock`; }
+
+  readLock() {
+    try { return JSON.parse(readFileSync(this.lockFile, 'utf8')); }
+    catch { return null; }
+  }
+
+  writeLock(port, pid) {
+    mkdirSync(dirname(this.lockFile), { recursive: true });
+    writeFileSync(this.lockFile, JSON.stringify({ port, pid, at: Date.now() }));
+  }
+
+  /**
+   * Reuse the Chrome we started earlier, otherwise start one on a free port.
+   *
+   * Ownership comes from a lock file rather than from inspecting the browser:
+   * Chrome does not reliably answer Browser.getBrowserCommandLine, and other
+   * Chromium browsers (Vivaldi, Brave, Edge) may hold the default port 9222.
+   * Getting this wrong is costly in both directions — we would either drive
+   * somebody else's browser, or try to start a second Chrome on a profile that
+   * is already open, which silently hands off and never opens a debug port.
+   */
   async launch() {
-    if (await this.isUp()) return { launched: false };
+    const lock = this.readLock();
+    if (lock?.port && await portBusy(lock.port)) {
+      const alive = lock.pid ? isAlive(lock.pid) : true;
+      this.port = lock.port;
+      if (alive && await this.isUp()) return { launched: false, port: lock.port, reused: true };
+    }
+
     const bin = findChrome();
     if (!bin) throw new Error('Chrome not found. Install Google Chrome or set CHROME_BIN.');
-    this.proc = spawn(bin, [
-      `--remote-debugging-port=${this.port}`,
-      `--user-data-dir=${this.userDataDir}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-features=Translate,MediaRouter',
-      '--restore-last-session=false',
-      this.startUrl,
-    ], { detached: true, stdio: 'ignore' });
-    this.proc.unref();
 
-    for (let i = 0; i < 60; i++) {
-      await sleep(500);
-      if (await this.isUp()) return { launched: true };
+    const skipped = [];
+    for (let port = this.port; port < this.port + 20; port++) {
+      if (await portBusy(port)) { skipped.push(port); continue; }
+
+      this.port = port;
+      const proc = spawn(bin, [
+        `--remote-debugging-port=${port}`,
+        `--user-data-dir=${this.userDataDir}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-features=Translate,MediaRouter',
+        '--restore-last-session=false',
+        this.startUrl,
+      ], { detached: true, stdio: 'ignore' });
+      this.proc = proc;
+      proc.unref();
+
+      let exited = false;
+      proc.once('exit', () => { exited = true; });
+
+      for (let i = 0; i < 60; i++) {
+        await sleep(500);
+        if (await this.isUp()) {
+          this.writeLock(port, proc.pid);
+          return { launched: true, port, skipped };
+        }
+        // Chrome exits at once when this profile is already open in another window.
+        if (exited && i > 4) {
+          throw new Error(
+            `A Chrome is already using ${this.userDataDir}. Quit that window and start again.`,
+          );
+        }
+      }
+      throw new Error(`Chrome did not expose debugging port ${port} in time.`);
     }
-    throw new Error('Chrome did not expose its debugging port in time.');
+
+    throw new Error(`Ports ${this.port}-${this.port + 19} are all in use.`);
   }
+
+  forgetLock() { try { rmSync(this.lockFile); } catch { /* nothing to clear */ } }
 
   async listTargets() {
     const all = await httpJson(`${this.base}/json/list`);

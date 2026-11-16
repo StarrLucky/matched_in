@@ -29,10 +29,21 @@ const EXTRACT = `
     const url = link.href.split('?')[0];
     if (seen.has(url)) continue;
 
-    const imgs = [...card.querySelectorAll('img')].map(i => i.src).filter(Boolean);
-    const photo = imgs.find(s => s.includes('profile-displayphoto'))
-               || imgs.find(s => !s.includes('displaybackgroundimage'))
-               || null;
+    // A card holds up to three images: the banner (profile-displaybackgroundimage),
+    // this person's avatar at 400px, and a 100px avatar of a *mutual connection*.
+    // An avatar is profile-displayphoto, or profile-framedphoto when the person
+    // wears an #OpenToWork / #Hiring frame.
+    const pics = [...card.querySelectorAll('img')]
+      .map(i => ({ src: i.src || '', size: i.naturalWidth || i.width || 0 }))
+      .filter(p => p.src && !p.src.includes('displaybackgroundimage'));
+
+    const avatars = pics.filter(p => /profile-(displayphoto|framedphoto)/.test(p.src));
+    const pool = avatars.length ? avatars : pics;
+    const photo = pool.sort((a, b) => b.size - a.size)[0]?.src || null;
+
+    const banner = [...card.querySelectorAll('img')]
+      .map(i => i.src || '')
+      .find(s => s.includes('displaybackgroundimage')) || null;
 
     const name = m[1].trim();
     const lines = (card.innerText || '').split('\\n').map(s => s.trim()).filter(Boolean);
@@ -44,6 +55,7 @@ const EXTRACT = `
       name,
       url,
       photo,
+      banner,
       headline: rest.find(s => !skip(s)) || null,
       mutuals: lines.find(s => /mutual connection/i.test(s)) || null,
       degree: (lines.find(s => /•\\s*(1st|2nd|3rd)/.test(s)) || '').match(/(1st|2nd|3rd)/)?.[1] || null,
@@ -52,10 +64,21 @@ const EXTRACT = `
   return [...seen.values()];
 `;
 
+// LinkedIn's server-driven shell has no stable id on its nav, so we look for
+// several independent signs of an authenticated page and accept any of them.
+// A false positive only yields an empty deck; a false negative blocks everything.
 const LOGGED_IN = `
-  if (/\\/(login|uas\\/login|checkpoint)/.test(location.pathname)) return { loggedIn: false, reason: 'login-page' };
-  const hasNav = !!document.querySelector('a[href*="/feed/"], [data-test-global-nav], #global-nav');
-  return { loggedIn: hasNav, url: location.href };
+  const path = location.pathname;
+  if (/^\\/$|\\/login|\\/uas\\/|\\/checkpoint|\\/authwall|\\/signup/.test(path)) {
+    return { loggedIn: false, reason: 'auth-page', url: location.href };
+  }
+  const navLink = !!document.querySelector('a[href*="/mynetwork"], a[href*="/jobs"], a[href*="/messaging"], a[href*="/feed"]');
+  const navText = /My Network|Messaging|Notifications|\\u041c\\u043e\\u044f \\u0441\\u0435\\u0442\\u044c|\\u0421\\u043e\\u043e\\u0431\\u0449\\u0435\\u043d\\u0438\\u044f/i.test(document.body.innerText || '');
+  const memberLink = !!document.querySelector('a[href*="/in/"]');
+  const connectBtn = [...document.querySelectorAll('button')]
+    .some(b => /^Invite .+ to connect$/i.test(b.getAttribute('aria-label') || ''));
+  const loggedIn = navLink || navText || memberLink || connectBtn;
+  return { loggedIn, url: location.href, signals: { navLink, navText, memberLink, connectBtn } };
 `;
 
 const scrollMore = (rounds) => `

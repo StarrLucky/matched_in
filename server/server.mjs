@@ -134,6 +134,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/session' && req.method === 'POST') {
+    if (DEMO) return json(res, 200, { linkedIn: { loggedIn: true, demo: true }, note: 'Demo mode — the cookie was ignored.' });
     const body = await readBody(req);
     const status = await exclusive(() => linkedin.signInWithCookie(body.li_at || ''));
     buffer = [];
@@ -201,7 +202,12 @@ async function handleApi(req, res, url) {
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (url.pathname.startsWith('/api/')) {
-    handleApi(req, res, url).catch((err) => json(res, 500, { error: err.message }));
+    const started = Date.now();
+    res.on('finish', () => console.log(`  ${req.method} ${url.pathname} -> ${res.statusCode} (${Date.now() - started}ms)`));
+    handleApi(req, res, url).catch((err) => {
+      console.error(`  ${req.method} ${url.pathname} failed:`, err.message);
+      if (!res.headersSent) json(res, 500, { error: err.message });
+    });
   } else {
     serveStatic(res, url.pathname).catch(() => {
       res.writeHead(500, { 'content-type': 'text/plain' });
@@ -230,10 +236,16 @@ server.listen(PORT, '0.0.0.0', () => {
   if (DEMO) {
     console.log('\n  DEMO MODE — fixture profiles, no LinkedIn, nothing is sent.\n');
   } else {
-    console.log(`\n  Chrome profile: ${join(DATA, 'chrome-profile')}${launched.launched ? ' (just launched)' : ' (already running)'}`);
+    if (launched.skipped?.length) {
+      console.log(`\n  Ports ${launched.skipped.join(', ')} belong to another browser — not touching it.`);
+    }
+    console.log(`\n  Chrome profile: ${join(DATA, 'chrome-profile')}${launched.launched ? ' (just launched)' : ' (already running)'} on port ${browser.port}`);
     console.log('  If LinkedIn is not signed in there, sign in in that Chrome window or paste li_at in the app.\n');
   }
 });
+
+process.on('unhandledRejection', (err) => console.error('  unhandled rejection:', err?.message || err));
+process.on('uncaughtException', (err) => console.error('  uncaught exception:', err?.message || err));
 
 const shutdown = () => { browser.close(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 1500); };
 process.on('SIGINT', shutdown);

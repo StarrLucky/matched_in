@@ -22,6 +22,14 @@ async function api(path, { method = 'GET', body } = {}) {
   return { status: res.status, ...data };
 }
 
+/** fetch() rejects with a bare "Failed to fetch" / "Load failed" when the server is gone. */
+function friendly(err) {
+  if (err instanceof TypeError || /failed to fetch|load failed|networkerror/i.test(err.message)) {
+    return 'Server not responding — is `npm start` still running on your Mac, and are you on the same Wi-Fi?';
+  }
+  return err.message;
+}
+
 /* ---------- elements ---------- */
 
 const $ = (id) => document.getElementById(id);
@@ -80,10 +88,16 @@ function buildCard(card, depth) {
   el.dataset.slug = card.slug;
 
   const initial = (card.name || '?').trim().charAt(0).toUpperCase();
+  // LinkedIn avatars top out at 400px, so blowing one up full-bleed looks mushy.
+  // A blurred copy fills the card and the crisp original sits on top.
+  const backdrop = card.banner || card.photo;
   el.innerHTML = `
-    ${card.photo
-      ? `<div class="card-photo" style="background-image:url(${JSON.stringify(card.photo)})"></div>`
-      : `<div class="card-fallback">${initial}</div>`}
+    ${backdrop ? `<div class="card-backdrop" style="background-image:url(${JSON.stringify(backdrop)})"></div>` : ''}
+    <div class="card-portrait">
+      ${card.photo
+        ? `<img class="card-avatar" src=${JSON.stringify(card.photo)} alt="" referrerpolicy="no-referrer" loading="eager">`
+        : `<div class="card-avatar card-initial">${initial}</div>`}
+    </div>
     <div class="card-shade"></div>
     <div class="stamp stamp-yes">CONNECT</div>
     <div class="stamp stamp-no">SKIP</div>
@@ -205,7 +219,7 @@ async function commit(card, dir) {
   } catch (err) {
     cards.unshift(card);
     render();
-    toast(err.message, 'bad');
+    toast(friendly(err), 'bad');
   } finally {
     busy = false;
     if (cards.length <= 3) loadDeck({ quiet: true });
@@ -232,7 +246,7 @@ async function loadDeck({ refresh = false, quiet = false } = {}) {
     } else if (/not signed in/i.test(err.message)) {
       showEmpty('LinkedIn is not signed in', 'Paste your li_at cookie in Settings, or sign in in the Chrome window on your Mac.', { label: 'Open settings', run: openSheet });
     } else {
-      showEmpty('Could not load suggestions', err.message, { label: 'Retry', run: () => loadDeck({ refresh: true }) });
+      showEmpty('Could not load suggestions', friendly(err), { label: 'Retry', run: () => loadDeck({ refresh: true }) });
     }
   }
 }
@@ -251,7 +265,7 @@ async function refreshState() {
     $('minGapSeconds').value = s.settings.minGapSeconds;
     $('statsLine').textContent = `${s.stats.sent} sent · ${s.stats.passed} skipped · ${s.stats.failed} failed`;
   } catch (err) {
-    $('sessionState').textContent = err.message;
+    $('sessionState').textContent = friendly(err);
   }
 }
 
@@ -269,7 +283,7 @@ $('btnUndo').onclick = async () => {
     toast(`${res.restored} is back in the deck`);
     cards = [];
     await loadDeck();
-  } catch (err) { toast(err.message, 'bad'); }
+  } catch (err) { toast(friendly(err), 'bad'); }
 };
 
 $('openSettings').onclick = openSheet;
@@ -285,7 +299,7 @@ $('saveSession').onclick = async () => {
     $('liAt').value = '';
     $('sessionState').textContent = res.linkedIn?.loggedIn ? 'Signed in and ready.' : 'LinkedIn did not accept that cookie.';
     if (res.linkedIn?.loggedIn) { closeSheet(); cards = []; loadDeck({ refresh: true }); }
-  } catch (err) { $('sessionState').textContent = err.message; }
+  } catch (err) { $('sessionState').textContent = friendly(err); }
 };
 
 $('saveLimits').onclick = async () => {
@@ -300,7 +314,7 @@ $('saveLimits').onclick = async () => {
     });
     paintQuota(res.quota);
     toast('Limits saved', 'good');
-  } catch (err) { toast(err.message, 'bad'); }
+  } catch (err) { toast(friendly(err), 'bad'); }
 };
 
 $('refreshDeck').onclick = () => { closeSheet(); cards = []; loadDeck({ refresh: true }); };

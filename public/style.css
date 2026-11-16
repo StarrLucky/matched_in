@@ -102,16 +102,37 @@ button { font: inherit; cursor: pointer; }
 .card[data-depth="2"] { transform: scale(.91) translateY(20px); filter: brightness(.45); }
 .card[data-depth="1"], .card[data-depth="2"] { pointer-events: none; }
 
-.card-photo { position: absolute; inset: 0; background: center/cover no-repeat; }
-.card-fallback {
-  position: absolute; inset: 0;
+/* Blurred, heavily scaled copy of the banner or avatar, purely as a backdrop. */
+.card-backdrop {
+  position: absolute; inset: -40px;
+  background: center/cover no-repeat;
+  filter: blur(28px) saturate(1.3) brightness(.85);
+  transform: scale(1.15);
+}
+.card-portrait {
+  position: absolute; left: 0; right: 0; top: 0;
+  height: 60%;
   display: grid; place-items: center;
-  font-size: 84px; font-weight: 700; color: #2c3b50;
   background: linear-gradient(160deg, #182232, #0f1620);
+}
+.card-backdrop + .card-portrait { background: none; }
+.card-avatar {
+  width: min(58vw, 208px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255, 255, 255, .14);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .5);
+  background: #16202d;
+}
+.card-initial {
+  display: grid; place-items: center;
+  font-size: 76px; font-weight: 700; color: #3a4c64;
 }
 .card-shade {
   position: absolute; inset: 0;
-  background: linear-gradient(to top, rgba(6, 9, 14, .96) 0%, rgba(6, 9, 14, .82) 26%, rgba(6, 9, 14, .18) 56%, rgba(6, 9, 14, .05) 100%);
+  background: linear-gradient(to top, rgba(6, 9, 14, .97) 0%, rgba(6, 9, 14, .88) 26%, rgba(6, 9, 14, .3) 56%, rgba(6, 9, 14, .04) 100%);
+  pointer-events: none;
 }
 
 .card-body { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 20px 22px; }
