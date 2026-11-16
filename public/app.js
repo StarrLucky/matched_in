@@ -4,12 +4,29 @@
 
 const KEY_STORE = 'matchedin.key';
 const LEGACY_KEY_STORE = 'inswipe.key';   // the app was called in·swipe once
+
+// Safari in private mode throws on localStorage, and a throw out here would
+// take the whole script with it — leaving a page that looks loaded and does
+// nothing. Fall back to memory and carry on.
+const fallback = new Map();
+const remember = {
+  get(name) {
+    try { return localStorage.getItem(name); } catch { return fallback.get(name) ?? null; }
+  },
+  set(name, value) {
+    try { localStorage.setItem(name, value); } catch { fallback.set(name, value); }
+  },
+};
+
 const params = new URLSearchParams(location.search);
 if (params.get('k')) {
-  localStorage.setItem(KEY_STORE, params.get('k'));
+  remember.set(KEY_STORE, params.get('k'));
   history.replaceState(null, '', location.pathname);
 }
-const KEY = localStorage.getItem(KEY_STORE) || localStorage.getItem(LEGACY_KEY_STORE) || '';
+
+// Not const: added to the home screen, iOS gives the app its own storage, so
+// the key often has to be typed in once on the phone itself.
+let KEY = remember.get(KEY_STORE) || remember.get(LEGACY_KEY_STORE) || '';
 
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
@@ -42,6 +59,8 @@ const emptyAction = $('emptyAction');
 const quotaEl = $('quota');
 const toastEl = $('toast');
 const sheet = $('sheet');
+const keyForm = $('keyForm');
+const keyInput = $('keyInput');
 const loginSheet = $('login');
 const loginPhase = $('loginPhase');
 const loginPhaseText = $('loginPhaseText');
@@ -76,11 +95,20 @@ function showEmpty(title, body = '', action = null) {
   emptyTitle.textContent = title;
   emptyBody.textContent = body;
   empty.classList.remove('hidden');
+  keyForm?.classList.add('hidden');
   emptyAction.classList.toggle('hidden', !action);
   if (action) {
     emptyAction.textContent = action.label;
     emptyAction.onclick = action.run;
   }
+}
+
+/** No key, or the wrong one: let it be typed in right here. */
+function askForKey(title = 'Access key needed') {
+  showEmpty(title, 'It is in the link the server printed on your Mac, after ?k=');
+  if (!keyForm) return;
+  keyForm.classList.remove('hidden');
+  if (keyInput) keyInput.value = '';
 }
 
 /* ---------- rendering ---------- */
@@ -246,7 +274,7 @@ async function loadDeck({ refresh = false, quiet = false } = {}) {
     }
   } catch (err) {
     if (err.status === 401) {
-      showEmpty('Wrong access key', 'Open the link the server printed in the terminal.');
+      askForKey('Wrong access key');
     } else if (/not signed in/i.test(err.message)) {
       showEmpty('LinkedIn is not signed in', 'Sign in once and the deck fills up.', { label: 'Sign in to LinkedIn', run: startLogin });
     } else {
@@ -279,6 +307,13 @@ function closeLogin() {
   loginSheet.classList.add('hidden');
 }
 
+/** The server does not know us. Nothing about LinkedIn can help — ask for the key. */
+function keyProblem() {
+  closeLogin();
+  closeSheet();
+  askForKey('Wrong access key');
+}
+
 async function startLogin() {
   closeSheet();
   loginSheet.classList.remove('hidden');
@@ -289,6 +324,7 @@ async function startLogin() {
     setPhase(PHASE_TEXT[res.phase] || PHASE_TEXT.waiting);
     pollLogin(Date.now() + LOGIN_TIMEOUT);
   } catch (err) {
+    if (err.status === 401) return keyProblem();
     setPhase(friendly(err), 'bad');
   }
 }
@@ -302,6 +338,7 @@ function pollLogin(deadline) {
       if (res.phase === 'done') return loginDone();
       setPhase(PHASE_TEXT[res.phase] || PHASE_TEXT.waiting);
     } catch (err) {
+      if (err.status === 401) return keyProblem();
       setPhase(friendly(err), 'bad');
     }
     if (Date.now() > deadline) {
@@ -339,7 +376,9 @@ async function refreshState() {
     $('minGapSeconds').value = s.settings.minGapSeconds;
     $('statsLine').textContent = `${s.stats.sent} sent · ${s.stats.passed} skipped · ${s.stats.failed} failed`;
   } catch (err) {
-    $('sessionState').textContent = friendly(err);
+    if (err.status === 401) return askForKey('Wrong access key');
+    const line = $('sessionState');
+    if (line) line.textContent = friendly(err);
   }
 }
 
@@ -348,9 +387,11 @@ function closeSheet() { sheet.classList.add('hidden'); }
 
 /* ---------- wiring ---------- */
 
-$('btnPass').onclick = () => swipeTop('left');
-$('btnConnect').onclick = () => swipeTop('right');
-$('btnUndo').onclick = async () => {
+const on = (id, event, handler) => $(id)?.addEventListener(event, handler);
+
+on('btnPass', 'click', () => swipeTop('left'));
+on('btnConnect', 'click', () => swipeTop('right'));
+on('btnUndo', 'click', async () => {
   try {
     const res = await api('/api/undo', { method: 'POST' });
     if (!res.ok) return toast(res.error || 'Nothing to undo.');
@@ -358,16 +399,29 @@ $('btnUndo').onclick = async () => {
     cards = [];
     await loadDeck();
   } catch (err) { toast(friendly(err), 'bad'); }
-};
+});
 
-$('signIn').onclick = startLogin;
-$('loginCancel').onclick = closeLogin;
+on('keyForm', 'submit', (e) => {
+  e.preventDefault();
+  const value = keyInput.value.trim().replace(/^.*[?&]k=/, '');
+  if (!value) return;
+  KEY = value;
+  remember.set(KEY_STORE, value);
+  keyForm.classList.add('hidden');
+  showEmpty('Loading suggestions…');
+  refreshState();
+  loadDeck();
+});
 
-$('openSettings').onclick = openSheet;
-$('closeSettings').onclick = closeSheet;
+on('signIn', 'click', startLogin);
+on('loginCancel', 'click', closeLogin);
+
+on('openSettings', 'click', openSheet);
+on('closeSettings', 'click', closeSheet);
 sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+loginSheet.addEventListener('click', (e) => { if (e.target === loginSheet) closeLogin(); });
 
-$('saveSession').onclick = async () => {
+on('saveSession', 'click', async () => {
   const value = $('liAt').value.trim();
   if (!value) return toast('Paste the cookie value first.');
   $('sessionState').textContent = 'Signing in…';
@@ -377,9 +431,9 @@ $('saveSession').onclick = async () => {
     $('sessionState').textContent = res.linkedIn?.loggedIn ? 'Signed in and ready.' : 'LinkedIn did not accept that cookie.';
     if (res.linkedIn?.loggedIn) { closeSheet(); cards = []; loadDeck({ refresh: true }); }
   } catch (err) { $('sessionState').textContent = friendly(err); }
-};
+});
 
-$('saveLimits').onclick = async () => {
+on('saveLimits', 'click', async () => {
   try {
     const res = await api('/api/settings', {
       method: 'POST',
@@ -392,12 +446,13 @@ $('saveLimits').onclick = async () => {
     paintQuota(res.quota);
     toast('Limits saved', 'good');
   } catch (err) { toast(friendly(err), 'bad'); }
-};
+});
 
-$('refreshDeck').onclick = () => { closeSheet(); cards = []; loadDeck({ refresh: true }); };
-quotaEl.onclick = openSheet;
+on('refreshDeck', 'click', () => { closeSheet(); cards = []; loadDeck({ refresh: true }); });
+on('quota', 'click', openSheet);
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeLogin(); closeSheet(); return; }
   if (!sheet.classList.contains('hidden') || !loginSheet.classList.contains('hidden')) return;
   if (e.key === 'ArrowLeft') swipeTop('left');
   if (e.key === 'ArrowRight') swipeTop('right');
@@ -408,5 +463,9 @@ document.addEventListener('touchmove', (e) => {
   if (sheet.classList.contains('hidden') && loginSheet.classList.contains('hidden')) e.preventDefault();
 }, { passive: false });
 
-refreshState();
-loadDeck();
+if (KEY) {
+  refreshState();
+  loadDeck();
+} else {
+  askForKey('Access key needed');
+}

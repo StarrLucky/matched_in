@@ -124,3 +124,67 @@ test('the settings sheet offers the LinkedIn sign-in', { skip: noChrome }, async
   assert.ok(sheet.hasCookieFallback, 'pasting a cookie is still available');
   assert.ok(sheet.session.length, 'the session line says something');
 });
+
+test('without a key the app asks for one instead of dead-ending', { skip: noChrome }, async () => {
+  // What an iPhone sees after "Add to Home Screen": the launch URL carries no
+  // ?k=, and the standalone app has its own storage, so the key is simply gone.
+  await browser.evaluate(`localStorage.clear(); return 1;`);
+  await browser.navigate(app.url('/'), { waitMs: 1200 });
+
+  const prompt = await waitFor(`
+    const form = document.getElementById('keyForm');
+    if (!form || form.classList.contains('hidden')) return null;
+    return { title: document.getElementById('emptyTitle').textContent };
+  `, { label: 'the access key form' });
+  assert.match(prompt.title, /access key/i);
+
+  // Pasting the whole link works, not just the bare key.
+  await browser.evaluate(`
+    document.getElementById('keyInput').value = ${JSON.stringify(app.url(`/?k=${app.key}`))};
+    document.getElementById('keyForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    return 1;
+  `);
+
+  const slug = await waitFor(`
+    const el = document.querySelector('.card[data-depth="0"]');
+    return el ? el.dataset.slug : null;
+  `, { label: 'the deck after the key was entered' });
+  assert.ok(slug, 'the deck loads once the key is in');
+
+  const stored = await browser.evaluate(`return localStorage.getItem('matchedin.key');`);
+  assert.equal(stored, app.key, 'and only the key itself is kept');
+});
+
+test('a bad key never leaves the sign-in sheet stuck', { skip: noChrome }, async () => {
+  // What the phone hit: no key, so tapping Sign in printed the server's
+  // "Bad or missing key" into the sheet and left it there for good.
+  await browser.evaluate(`localStorage.setItem('matchedin.key', 'not-the-key'); return 1;`);
+  await browser.navigate(app.url('/'), { waitMs: 1200 });
+
+  await browser.evaluate(`
+    document.getElementById('openSettings').click();
+    document.getElementById('signIn').click();
+    return 1;
+  `);
+
+  const state = await waitFor(`
+    const login = document.getElementById('login');
+    const form = document.getElementById('keyForm');
+    if (!login.classList.contains('hidden') || form.classList.contains('hidden')) return null;
+    return {
+      settingsHidden: document.getElementById('sheet').classList.contains('hidden'),
+      title: document.getElementById('emptyTitle').textContent,
+    };
+  `, { label: 'the sheets to give way to the key form' });
+
+  assert.equal(state.settingsHidden, true, 'settings closes too');
+  assert.match(state.title, /access key/i);
+
+  // And the way back in is right there.
+  await browser.evaluate(`
+    document.getElementById('keyInput').value = ${JSON.stringify(app.key)};
+    document.getElementById('keyForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    return 1;
+  `);
+  await waitFor(`return !!document.querySelector('.card[data-depth="0"]');`, { label: 'the deck to come back' });
+});

@@ -94,7 +94,9 @@ async function serveStatic(res, pathname) {
   const body = await readFile(file);
   res.writeHead(200, {
     'content-type': MIME[extname(file)] || 'application/octet-stream',
-    'cache-control': 'no-cache',
+    // The shell names the elements app.js wires up; a stale copy of it on a
+    // phone would be a dead page, so it is never cached at all.
+    'cache-control': extname(file) === '.html' ? 'no-store' : 'no-cache',
   });
   res.end(body);
 }
