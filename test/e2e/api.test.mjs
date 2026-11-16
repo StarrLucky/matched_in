@@ -99,6 +99,15 @@ test('settings are applied and clamped', async () => {
   assert.equal(swipe.status, 200, 'with no gap to wait out, the next invite goes through');
 });
 
+test('clearing a limit field does not set it to zero', async () => {
+  await app.api('/api/settings', { method: 'POST', body: { maxPerHour: 9, maxPerDay: 30 } });
+  const { body } = await app.api('/api/settings', { method: 'POST', body: { maxPerHour: '', maxPerDay: '' } });
+
+  assert.equal(body.settings.maxPerHour, 9);
+  assert.equal(body.settings.maxPerDay, 30);
+  assert.ok(body.quota.hourLeft > 0, 'the deck is not bricked by an empty field');
+});
+
 test('the hourly ceiling stops the deck', async () => {
   await app.api('/api/settings', { method: 'POST', body: { maxPerHour: 2, minGapSeconds: 0 } });
   const card = (await app.api('/api/deck')).body.cards[0];

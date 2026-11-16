@@ -44,11 +44,17 @@ export class Store {
 
   updateSettings(patch) {
     const next = { ...this.state.settings };
+    const ceiling = { maxPerHour: 100, maxPerDay: 150, minGapSeconds: 100 };
+    // A cleared field arrives as '' and would otherwise read as zero — which
+    // silently stops every invite and reads as "Daily limit reached (0)".
+    const floor = { maxPerHour: 1, maxPerDay: 1, minGapSeconds: 0 };
+
     for (const key of ['maxPerHour', 'maxPerDay', 'minGapSeconds']) {
-      if (patch[key] !== undefined) {
-        const n = Number(patch[key]);
-        if (Number.isFinite(n) && n >= 0) next[key] = Math.min(n, key === 'maxPerDay' ? 150 : 100);
-      }
+      const raw = patch[key];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < floor[key]) continue;
+      next[key] = Math.min(n, ceiling[key]);
     }
     this.state.settings = next;
     this.save();

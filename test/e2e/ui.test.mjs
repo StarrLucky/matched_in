@@ -188,3 +188,33 @@ test('a bad key never leaves the sign-in sheet stuck', { skip: noChrome }, async
   `);
   await waitFor(`return !!document.querySelector('.card[data-depth="0"]');`, { label: 'the deck to come back' });
 });
+
+test('a quick twitch to the right does not send anything', { skip: noChrome }, async () => {
+  // 25px, fast: the old rule read that as a flick and sent an invitation.
+  await browser.navigate(app.url(`/?k=${app.key}`), { waitMs: 1500 });
+
+  const slug = await waitFor(`
+    const el = document.querySelector('.card[data-depth="0"]');
+    return el ? el.dataset.slug : null;
+  `, { label: 'a card to twitch' });
+
+  const sentBefore = (await app.api('/api/history')).body.stats.sent;
+
+  await browser.evaluate(`
+    const el = document.querySelector('.card[data-depth="0"]');
+    const r = el.getBoundingClientRect();
+    const x = r.x + r.width / 2, y = r.y + r.height / 2;
+    const fire = (type, cx) => el.dispatchEvent(new PointerEvent(type, {
+      pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: cx, clientY: y, bubbles: true, cancelable: true,
+    }));
+    fire('pointerdown', x);
+    for (let i = 1; i <= 5; i++) { await new Promise(r => setTimeout(r, 8)); fire('pointermove', x + i * 5); }
+    fire('pointerup', x + 25);
+    await new Promise(r => setTimeout(r, 900));
+    return 1;
+  `);
+
+  const stillThere = await browser.evaluate(`return !!document.querySelector('.card[data-slug=${JSON.stringify(slug)}]');`);
+  assert.equal(stillThere, true, 'the card stays put');
+  assert.equal((await app.api('/api/history')).body.stats.sent, sentBefore, 'and nothing was sent');
+});

@@ -60,6 +60,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 7px 11px;
+  min-height: 44px;
 }
 .quota.warn { color: #fbbf24; border-color: #4a3a12; }
 .quota.stop { color: var(--no); border-color: #4a1724; }
@@ -67,7 +68,8 @@ body {
 .icon-btn {
   display: grid;
   place-items: center;
-  width: 38px; height: 38px;
+  /* 44px is the smallest target a thumb hits reliably; the ring stays 38px. */
+  width: 44px; height: 44px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--bg-soft);
@@ -136,8 +138,15 @@ button { font: inherit; cursor: pointer; }
 }
 
 .card-body { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 20px 22px; }
-.card-name { display: flex; align-items: baseline; gap: 8px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
-.card-degree { font-size: 13px; font-weight: 600; color: var(--muted); }
+.card-name {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+  /* A name can be one long unbroken word; wrap it rather than cut it off. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.card-name .nm { min-width: 0; }
+.card-degree { font-size: 13px; font-weight: 600; color: var(--muted); flex: none; white-space: nowrap; }
 .card-headline { margin: 7px 0 0; font-size: 14.5px; color: #cdd6e2; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .card-mutuals { margin: 11px 0 0; font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .card-mutuals::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
@@ -270,6 +279,20 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
   background: var(--accent);
   border: 0;
   border-radius: 13px;
+}
+
+/* Landscape on a phone leaves ~210px for the card: the portrait has to give
+   way, or the name lands on top of the face. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .card-portrait { height: 100%; align-items: start; padding-top: 10px; }
+  .card-avatar { width: min(26vh, 120px); }
+  .card-body { padding: 12px 16px 14px; }
+  .card-name { font-size: 20px; }
+  .card-headline { -webkit-line-clamp: 2; font-size: 13px; }
+  .card-mutuals { margin-top: 6px; }
+  :root { --bar-h: 46px; --actions-h: 76px; }
+  .round { width: 52px; height: 52px; }
+  .round.undo { width: 42px; height: 42px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

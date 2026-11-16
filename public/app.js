@@ -71,8 +71,21 @@ let cards = [];
 let busy = false;
 let lastQuota = null;
 
-const SWIPE_DISTANCE = 110;
-const SWIPE_VELOCITY = 0.45;
+const SWIPE_DISTANCE = 110;   // a deliberate drag
+const SWIPE_VELOCITY = 0.45;  // or a flick, if it also travels far enough
+const FLICK_DISTANCE = 70;
+// The right swipe sends something to a real person and cannot be taken back,
+// so it asks for a longer movement than the skip does.
+const INVITE_EFFORT = 1.3;
+
+function decideSwipe(dx, elapsedMs) {
+  const distance = Math.abs(dx);
+  const effort = dx > 0 ? INVITE_EFFORT : 1;
+  const velocity = distance / Math.max(1, elapsedMs);
+  const dragged = distance > SWIPE_DISTANCE * effort;
+  const flicked = velocity > SWIPE_VELOCITY && distance > FLICK_DISTANCE * effort;
+  return dragged || flicked;
+}
 
 /* ---------- helpers ---------- */
 
@@ -194,10 +207,7 @@ function attachDrag(el) {
     dragging = false;
     try { el.releasePointerCapture(pid); } catch { /* pointer already gone */ }
 
-    const velocity = Math.abs(dx) / Math.max(1, performance.now() - startT);
-    const decided = Math.abs(dx) > SWIPE_DISTANCE || velocity > SWIPE_VELOCITY;
-
-    if (decided) {
+    if (decideSwipe(dx, performance.now() - startT)) {
       flyOut(el, dx > 0 ? 'right' : 'left');
     } else {
       el.classList.add('settling');
@@ -243,7 +253,8 @@ async function commit(card, dir) {
       render();
       toast(res.message || 'Rate limit reached.', 'bad');
     } else if (dir === 'right' && res.sent) {
-      toast(`Invite sent to ${card.name}`, 'good');
+      // Nothing to say: the card flew off and the quota pill ticked up.
+      // Only the things that did not work are worth interrupting for.
     } else if (dir === 'right') {
       toast(`Could not invite ${card.name}: ${res.error || 'unknown error'}`, 'bad');
     }
@@ -404,7 +415,7 @@ on('btnUndo', 'click', async () => {
 on('keyForm', 'submit', (e) => {
   e.preventDefault();
   const value = keyInput.value.trim().replace(/^.*[?&]k=/, '');
-  if (!value) return;
+  if (!value) return toast('Paste the key, or the whole link.');
   KEY = value;
   remember.set(KEY_STORE, value);
   keyForm.classList.add('hidden');

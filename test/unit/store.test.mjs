@@ -31,6 +31,21 @@ test('settings are clamped, and nonsense is ignored', () => {
   store.dispose();
 });
 
+test('a cleared limit field leaves the limit alone', () => {
+  const store = freshStore();
+  store.updateSettings({ maxPerHour: 8, maxPerDay: 20, minGapSeconds: 4 });
+
+  // What the app sends when a thumb empties the field: '' — not zero.
+  const after = store.updateSettings({ maxPerHour: '', maxPerDay: '', minGapSeconds: '' });
+  assert.deepEqual(after, { maxPerHour: 8, maxPerDay: 20, minGapSeconds: 4 });
+
+  // Zero invites per hour is not a setting, it is a broken app.
+  assert.equal(store.updateSettings({ maxPerHour: 0 }).maxPerHour, 8);
+  assert.equal(store.updateSettings({ maxPerDay: 0 }).maxPerDay, 20);
+  assert.equal(store.blockReason(), null, 'and nothing is blocked by a phantom ceiling');
+  store.dispose();
+});
+
 test('settings and history survive a restart', () => {
   const store = freshStore();
   store.updateSettings({ maxPerDay: 20 });
