@@ -14,7 +14,9 @@ import { DEMO_CARDS } from './demo.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = join(ROOT, 'public');
-const DATA = join(ROOT, 'data');
+// DATA_DIR lets the end-to-end tests run against a throwaway profile and
+// history instead of yours.
+const DATA = process.env.DATA_DIR ? resolve(process.env.DATA_DIR) : join(ROOT, 'data');
 
 const PORT = Number(process.env.PORT || 7777);
 const CDP_PORT = Number(process.env.CDP_PORT || 9222);
@@ -41,6 +43,13 @@ const exclusive = (fn) => {
 
 // In-memory deck buffer so swiping does not re-scrape on every card.
 let buffer = [];
+
+/** Chrome may have been quit since startup; bring it back before using it. */
+async function ensureBrowser() {
+  if (DEMO || await browser.isUp()) return;
+  await browser.launch();
+  await browser.attach().catch(() => {});
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -131,6 +140,23 @@ async function handleApi(req, res, url) {
       settings: store.settings,
       deckSize: buffer.length,
     });
+  }
+
+  // Sign in the way a person would: LinkedIn's own page, in the Chrome we drive.
+  // The server only watches for the cookie that login leaves behind.
+  if (route === '/api/login' && req.method === 'POST') {
+    if (DEMO) return json(res, 200, { phase: 'done', loggedIn: true, demo: true });
+    await ensureBrowser();
+    const state = await exclusive(() => linkedin.startLogin());
+    if (state.phase === 'done') buffer = [];
+    return json(res, 200, state);
+  }
+
+  if (route === '/api/login/status') {
+    if (DEMO) return json(res, 200, { phase: 'done', loggedIn: true, demo: true });
+    const state = await exclusive(() => linkedin.loginStatus());
+    if (state.phase === 'done') buffer = [];
+    return json(res, 200, state);
   }
 
   if (route === '/api/session' && req.method === 'POST') {
@@ -230,7 +256,7 @@ if (!DEMO) await browser.attach().catch(() => {});
 
 server.listen(PORT, '0.0.0.0', () => {
   const link = `http://${lanAddress()}:${PORT}/?k=${KEY}`;
-  console.log('\n  LinkedIn Swipe is running.\n');
+  console.log('\n  matched_in is running.\n');
   console.log(`  On your iPhone (same Wi-Fi):  ${link}`);
   console.log(`  On this Mac:                  http://localhost:${PORT}/?k=${KEY}`);
   if (DEMO) {
@@ -240,7 +266,7 @@ server.listen(PORT, '0.0.0.0', () => {
       console.log(`\n  Ports ${launched.skipped.join(', ')} belong to another browser — not touching it.`);
     }
     console.log(`\n  Chrome profile: ${join(DATA, 'chrome-profile')}${launched.launched ? ' (just launched)' : ' (already running)'} on port ${browser.port}`);
-    console.log('  If LinkedIn is not signed in there, sign in in that Chrome window or paste li_at in the app.\n');
+    console.log('  Not signed in to LinkedIn yet? Tap "Sign in to LinkedIn" in the app — it opens the login page here.\n');
   }
 });
 

@@ -1,0 +1,126 @@
+// The front end in a real browser: a real drag on a real card, against the
+// real server in demo mode. Headless Chrome, its own throwaway profile.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { Browser, findChrome } from '../../server/chrome.mjs';
+import { startApp, freePort } from '../helpers/app.mjs';
+
+const noChrome = findChrome() ? false : 'Chrome is not installed on this machine';
+
+let app;
+let browser;
+let profileDir;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Poll the page until the snippet returns something truthy, or give up. */
+async function waitFor(expression, { timeoutMs = 10_000, label = 'condition' } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    last = await browser.evaluate(expression);
+    if (last) return last;
+    await sleep(200);
+  }
+  throw new Error(`timed out waiting for ${label} (last value: ${JSON.stringify(last)})`);
+}
+
+before(async () => {
+  if (noChrome) return;
+  app = await startApp({ demo: true });
+  profileDir = mkdtempSync(join(tmpdir(), 'matched-in-ui-'));
+  browser = new Browser({
+    port: await freePort(),
+    userDataDir: join(profileDir, 'profile'),
+    startUrl: app.url(`/?k=${app.key}`),
+    args: ['--headless=new', '--window-size=430,932', '--hide-scrollbars'],
+    match: '127.0.0.1',
+  });
+  await browser.launch();
+  await browser.attach();
+});
+
+after(async () => {
+  browser?.close();
+  if (browser?.proc?.pid) {
+    try { process.kill(browser.proc.pid, 'SIGTERM'); } catch { /* already gone */ }
+  }
+  await sleep(300);
+  if (profileDir) rmSync(profileDir, { recursive: true, force: true });
+  await app?.stop();
+});
+
+test('the deck renders cards from the server', { skip: noChrome }, async () => {
+  const card = await waitFor(`
+    const el = document.querySelector('.card[data-depth="0"]');
+    if (!el) return null;
+    return { slug: el.dataset.slug, name: el.querySelector('.nm')?.textContent || '' };
+  `, { label: 'the first card' });
+
+  assert.ok(card.slug, 'the top card knows who it is');
+  assert.ok(card.name.length, 'and shows a name');
+
+  const title = await browser.evaluate('return document.title;');
+  assert.equal(title, 'matched_in');
+});
+
+test('dragging a card to the left skips that person', { skip: noChrome }, async () => {
+  const card = await waitFor(`
+    const el = document.querySelector('.card[data-depth="0"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { slug: el.dataset.slug, x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  `, { label: 'a card to drag' });
+
+  // A real pointer drag: press, several moves, release — the gesture the
+  // phone makes, with the button held down the whole way.
+  const page = await browser.attach();
+  const move = (x, y, buttons = 0) => page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x), y: Math.round(y), button: buttons ? 'left' : 'none', buttons });
+
+  await move(card.x, card.y);
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: Math.round(card.x), y: Math.round(card.y), button: 'left', buttons: 1, clickCount: 1 });
+  for (let step = 1; step <= 8; step++) {
+    await move(card.x - step * 28, card.y, 1);
+    await sleep(25);
+  }
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: Math.round(card.x - 224), y: Math.round(card.y), button: 'left', buttons: 0, clickCount: 1 });
+
+  await waitFor(`return !document.querySelector('.card[data-slug=${JSON.stringify(card.slug)}]');`,
+    { label: 'the card to leave the deck' });
+
+  const { body } = await app.api('/api/history');
+  const entry = body.swipes.find((s) => s.slug === card.slug);
+  assert.ok(entry, 'the server heard about the swipe');
+  assert.equal(entry.dir, 'left');
+  assert.equal(entry.sent, false, 'a skip sends nothing');
+  assert.equal(body.stats.sent, 0);
+});
+
+test('the settings sheet offers the LinkedIn sign-in', { skip: noChrome }, async () => {
+  const gear = await waitFor(`
+    const el = document.getElementById('openSettings');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  `, { label: 'the settings button' });
+
+  await browser.clickAt(gear.x, gear.y);
+
+  const sheet = await waitFor(`
+    const el = document.getElementById('sheet');
+    if (!el || el.classList.contains('hidden')) return null;
+    return {
+      signIn: document.getElementById('signIn')?.textContent || '',
+      session: document.getElementById('sessionState')?.textContent || '',
+      hasCookieFallback: !!document.getElementById('liAt'),
+    };
+  `, { label: 'the settings sheet' });
+
+  assert.match(sheet.signIn, /sign in/i);
+  assert.ok(sheet.hasCookieFallback, 'pasting a cookie is still available');
+  assert.ok(sheet.session.length, 'the session line says something');
+});

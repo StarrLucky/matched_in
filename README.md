@@ -1,4 +1,4 @@
-# in·swipe
+# matched_in
 
 A Tinder-style swipe deck for LinkedIn connection suggestions, built to be used from an iPhone.
 
@@ -31,7 +31,7 @@ So the server reads the rendered page and clicks the real **Connect** button, us
 Requires Node 22+ and Google Chrome. No npm install — there are no dependencies.
 
 ```bash
-cd linkedin-swipe
+cd matched_in
 npm start
 ```
 
@@ -43,9 +43,13 @@ On your iPhone (same Wi-Fi):  http://192.168.x.x:7777/?k=ab12cd34ef56
 On this Mac:                  http://localhost:7777/?k=ab12cd34ef56
 ```
 
-Sign in to LinkedIn **once** in that Chrome window. Alternatively, open Settings in the app and
-paste your `li_at` cookie — the server injects it into that profile. The session persists, so you
-only do this once.
+Open the app and tap **Sign in to LinkedIn** (Settings → LinkedIn session). That opens LinkedIn's
+own login page in the Chrome window on your Mac and raises it; you type the password and answer 2FA
+there, and the app watches for the `li_at` cookie the login leaves in that profile and closes the
+waiting screen by itself. The app never asks for your password and never fills a credential field.
+
+If you would rather carry a session over from another browser, Settings → *Paste a cookie instead*
+takes the `li_at` value directly. Either way the session persists in the profile, so you do this once.
 
 On the iPhone, open the URL in Safari and use **Share → Add to Home Screen**. It then runs
 full-screen with no browser chrome.
@@ -86,7 +90,7 @@ server refuses to exceed them; the card comes back into the deck instead of bein
 
 ## What is stored
 
-Everything lives in `linkedin-swipe/data/` and is gitignored:
+Everything lives in `matched_in/data/` and is gitignored:
 
 - `state.json` — swipe history (so nobody reappears), settings, invite timestamps
 - `chrome-profile/` — the Chrome profile holding the LinkedIn session
@@ -117,6 +121,22 @@ Wi-Fi could. Every `/api/*` call requires the key from the printed URL. The app 
 | `SWIPE_KEY` | random | Access key; random each start unless set |
 | `CHROME_BIN` | auto | Path to Chrome/Chromium/Edge/Brave |
 | `DEMO` | — | `1` for fixture mode |
+
+## Working on it
+
+```bash
+make          # lint, unit tests, end-to-end tests
+make help     # everything you can run
+```
+
+`make lint` parses every file, the snippets that run inside the LinkedIn page included —
+those live in template strings, so no parser would otherwise see them. `make unit` covers
+the throttling in the store and the driver's decisions, with the page faked out. `make e2e`
+runs this server over real HTTP in demo mode and drives the app in headless Chrome, down to
+a real drag on a card.
+
+Nothing in the suite touches LinkedIn or your own session: the tests get a throwaway
+`DATA_DIR` and their own Chrome profile, and demo mode never opens LinkedIn at all.
 
 ## Caveats
 

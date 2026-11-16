@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>in·swipe</title>
+<title>matched_in</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#0a0e14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="in·swipe">
+<meta name="apple-mobile-web-app-title" content="matched_in">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -16,7 +16,7 @@
 <body>
 
 <header class="bar">
-  <div class="brand"><span class="mark">in</span><span class="dot">·</span>swipe</div>
+  <div class="brand">matched<span class="dot">_</span><span class="mark">in</span></div>
   <button id="quota" class="quota" type="button" aria-label="Today's invites">–</button>
   <button id="openSettings" class="icon-btn" type="button" aria-label="Settings">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5Zm7.4-2.6.1-.9-.1-.9 1.9-1.5a.5.5 0 0 0 .1-.6l-1.8-3.1a.5.5 0 0 0-.6-.2l-2.2.9a7.3 7.3 0 0 0-1.6-.9l-.3-2.4a.5.5 0 0 0-.5-.4h-3.6a.5.5 0 0 0-.5.4l-.3 2.4a7.3 7.3 0 0 0-1.6.9l-2.2-.9a.5.5 0 0 0-.6.2L3.3 9a.5.5 0 0 0 .1.6l1.9 1.5-.1.9.1.9-1.9 1.5a.5.5 0 0 0-.1.6l1.8 3.1a.5.5 0 0 0 .6.2l2.2-.9a7.3 7.3 0 0 0 1.6.9l.3 2.4a.5.5 0 0 0 .5.4h3.6a.5.5 0 0 0 .5-.4l.3-2.4a7.3 7.3 0 0 0 1.6-.9l2.2.9a.5.5 0 0 0 .6-.2l1.8-3.1a.5.5 0 0 0-.1-.6Z"/></svg>
@@ -45,6 +45,20 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+<div id="login" class="sheet hidden" role="dialog" aria-modal="true" aria-label="Signing in to LinkedIn">
+  <div class="sheet-inner">
+    <div class="sheet-grip"></div>
+    <h2>Signing in</h2>
+    <p id="loginPhase" class="phase"><span class="spinner" aria-hidden="true"></span><span id="loginPhaseText">Opening LinkedIn…</span></p>
+    <ol class="steps">
+      <li>LinkedIn's login page opens in the Chrome window on your Mac.</li>
+      <li>Sign in there — password, 2FA, whatever it asks.</li>
+      <li>This screen closes itself once the session is in place.</li>
+    </ol>
+    <button id="loginCancel" class="ghost-btn" type="button">Cancel</button>
+  </div>
+</div>
+
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="Settings">
   <div class="sheet-inner">
     <div class="sheet-grip"></div>
@@ -53,12 +67,17 @@
     <section>
       <h3>LinkedIn session</h3>
       <p id="sessionState" class="muted small">Checking…</p>
-      <label class="field">
-        <span>Paste your <code>li_at</code> cookie</span>
-        <input id="liAt" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AQEDAS…">
-      </label>
-      <button id="saveSession" class="ghost-btn" type="button">Use this cookie</button>
-      <p class="muted small">Or just sign in to LinkedIn in the Chrome window the server opened on your Mac.</p>
+      <button id="signIn" class="primary-btn" type="button">Sign in to LinkedIn</button>
+      <p class="muted small">Opens LinkedIn in the Chrome window on your Mac and waits. Type your password
+        and answer 2FA there — the app picks up the session by itself.</p>
+      <details class="adv">
+        <summary>Paste a cookie instead</summary>
+        <label class="field">
+          <span>Your <code>li_at</code> value</span>
+          <input id="liAt" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AQEDAS…">
+        </label>
+        <button id="saveSession" class="ghost-btn" type="button">Use this cookie</button>
+      </details>
     </section>
 
     <section>

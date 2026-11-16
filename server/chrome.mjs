@@ -40,11 +40,15 @@ class CdpSocket {
       const slot = this.pending.get(msg.id);
       if (!slot) return;
       this.pending.delete(msg.id);
+      clearTimeout(slot.timer);
       if (msg.error) slot.reject(new Error(`${msg.error.message} (${msg.error.code})`));
       else slot.resolve(msg.result);
     });
     this.ws.addEventListener('close', () => {
-      for (const slot of this.pending.values()) slot.reject(new Error('CDP socket closed'));
+      for (const slot of this.pending.values()) {
+        clearTimeout(slot.timer);
+        slot.reject(new Error('CDP socket closed'));
+      }
       this.pending.clear();
       this.ws = null;
     });
@@ -56,10 +60,13 @@ class CdpSocket {
     if (!this.connected) return Promise.reject(new Error('CDP not connected'));
     const id = this.nextId++;
     const promise = new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      setTimeout(() => {
+      // Cleared on reply, and unref'd meanwhile: one in-flight call should not
+      // pin the event loop open for its whole timeout.
+      const timer = setTimeout(() => {
         if (this.pending.delete(id)) reject(new Error(`CDP timeout: ${method}`));
       }, 45_000);
+      timer.unref?.();
+      this.pending.set(id, { resolve, reject, timer });
     });
     this.ws.send(JSON.stringify({ id, method, params }));
     return promise;
@@ -91,10 +98,12 @@ async function httpJson(url) {
 }
 
 export class Browser {
-  constructor({ port, userDataDir, startUrl }) {
+  constructor({ port, userDataDir, startUrl, args = [], match = 'linkedin.com' }) {
     this.port = port;
     this.userDataDir = userDataDir;
     this.startUrl = startUrl;
+    this.args = args;          // extra Chrome flags; the UI test asks for headless
+    this.match = match;        // which of the open tabs is ours
     this.proc = null;
     this.page = null;        // CdpSocket bound to the LinkedIn tab
     this.targetId = null;
@@ -152,6 +161,7 @@ export class Browser {
         '--no-default-browser-check',
         '--disable-features=Translate,MediaRouter',
         '--restore-last-session=false',
+        ...this.args,
         this.startUrl,
       ], { detached: true, stdio: 'ignore' });
       this.proc = proc;
@@ -190,14 +200,14 @@ export class Browser {
   async attach() {
     if (this.page?.connected) return this.page;
     const pages = await this.listTargets();
-    let target = pages.find((t) => (t.url || '').includes('linkedin.com'));
+    let target = pages.find((t) => (t.url || '').includes(this.match));
     if (!target) {
       // /json/new is blocked on newer Chrome unless we ask with PUT.
       await fetch(`${this.base}/json/new?${encodeURIComponent(this.startUrl)}`, { method: 'PUT' })
         .catch(() => {});
       await sleep(1200);
       const again = await this.listTargets();
-      target = again.find((t) => (t.url || '').includes('linkedin.com')) || again[0];
+      target = again.find((t) => (t.url || '').includes(this.match)) || again[0];
     }
     if (!target?.webSocketDebuggerUrl) throw new Error('No debuggable Chrome tab available.');
     this.targetId = target.id;
@@ -206,7 +216,24 @@ export class Browser {
     await this.page.send('Page.enable').catch(() => {});
     await this.page.send('Runtime.enable').catch(() => {});
     await this.page.send('Network.enable').catch(() => {});
+    await this.keepAwake();
     return this.page;
+  }
+
+  /**
+   * Keep the tab behaving like the visible, focused one.
+   *
+   * macOS marks a window that sits behind other windows as occluded, and Chrome
+   * then freezes animation frames in that tab and throttles its timers to one a
+   * second. Our clicks still land, but LinkedIn's React code never gets a frame
+   * to turn the click into an invite — which is exactly the state this app runs
+   * in, since you swipe from your phone while Chrome sits in the background.
+   */
+  async keepAwake() {
+    const page = this.page;
+    if (!page?.connected) return;
+    await page.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
+    await page.send('Page.setWebLifecycleState', { state: 'active' }).catch(() => {});
   }
 
   async currentUrl() {
@@ -235,6 +262,8 @@ export class Browser {
   async navigate(url, { waitMs = 3500 } = {}) {
     const page = await this.attach();
     await page.send('Page.navigate', { url });
+    // A fresh document starts out throttled again if the window is occluded.
+    await this.keepAwake();
     await sleep(waitMs);
   }
 
@@ -251,6 +280,49 @@ export class Browser {
     return cookies.map((c) => c.name);
   }
 
+  /** One cookie's value, or null. Cookies are profile-wide, so this sees a
+   *  sign-in that happened in any tab of this Chrome, not just our own. */
+  async cookieValue(name, url = 'https://www.linkedin.com/') {
+    const page = await this.attach();
+    const { cookies } = await page.send('Network.getCookies', { urls: [url] });
+    return cookies.find((c) => c.name === name)?.value || null;
+  }
+
+  /** Drop the current tab binding and pick a LinkedIn tab again.
+   *  The person may have signed in in a different tab than the one we hold. */
+  async reattach() {
+    this.page?.close();
+    this.page = null;
+    this.targetId = null;
+    return this.attach();
+  }
+
+  /** A CDP socket on the browser itself, for window-level commands. */
+  async browserSocket() {
+    if (this.browserPipe?.connected) return this.browserPipe;
+    const version = await httpJson(`${this.base}/json/version`);
+    if (!version.webSocketDebuggerUrl) throw new Error('No browser-level CDP endpoint.');
+    this.browserPipe = new CdpSocket(version.webSocketDebuggerUrl);
+    await this.browserPipe.open();
+    return this.browserPipe;
+  }
+
+  /** Raise the Chrome window and focus our tab, so signing in is one glance away. */
+  async bringToFront() {
+    const page = await this.attach();
+    await page.send('Page.bringToFront').catch(() => {});
+    try {
+      const socket = await this.browserSocket();
+      const { windowId, bounds } = await socket.send('Browser.getWindowForTarget', { targetId: this.targetId });
+      const state = bounds?.windowState;
+      if (state === 'minimized' || state === 'fullscreen') {
+        await socket.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } });
+      }
+      // Re-asserting the bounds is what actually raises the window on macOS.
+      await socket.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } });
+    } catch { /* window control is a nicety; the tab is already focused */ }
+  }
+
   /**
    * Click at viewport coordinates with real, trusted input events.
    * element.click() would be isTrusted:false; dispatched CDP input is not.
@@ -265,5 +337,5 @@ export class Browser {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...common });
   }
 
-  close() { this.page?.close(); }
+  close() { this.page?.close(); this.browserPipe?.close(); }
 }

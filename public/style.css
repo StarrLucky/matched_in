@@ -51,7 +51,7 @@ body {
   padding: 0 5px;
   margin-right: 1px;
 }
-.brand .dot { color: var(--accent); }
+.brand .dot { color: var(--muted); margin: 0 1px; }
 
 .quota {
   font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -275,3 +275,31 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 @media (prefers-reduced-motion: reduce) {
   .card.settling, .card.flying, .toast, .round { transition: none; }
 }
+
+/* ---------- sign-in ---------- */
+.adv { margin-top: 12px; }
+.adv > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 6px 0;
+  list-style: none;
+}
+.adv > summary::-webkit-details-marker { display: none; }
+.adv > summary::before { content: "+ "; color: var(--accent); }
+.adv[open] > summary::before { content: "– "; }
+
+.phase { display: flex; align-items: center; gap: 10px; font-size: 14px; margin: 0 0 14px; }
+.spinner {
+  width: 15px; height: 15px; flex: none;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+.phase.done .spinner { border-color: var(--yes); animation: none; }
+.phase.bad .spinner { border-color: var(--no); animation: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.steps { margin: 0 0 18px; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.steps li { margin: 5px 0; }

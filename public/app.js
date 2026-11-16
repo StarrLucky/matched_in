@@ -2,13 +2,14 @@
 
 /* ---------- api ---------- */
 
-const KEY_STORE = 'inswipe.key';
+const KEY_STORE = 'matchedin.key';
+const LEGACY_KEY_STORE = 'inswipe.key';   // the app was called in·swipe once
 const params = new URLSearchParams(location.search);
 if (params.get('k')) {
   localStorage.setItem(KEY_STORE, params.get('k'));
   history.replaceState(null, '', location.pathname);
 }
-const KEY = localStorage.getItem(KEY_STORE) || '';
+const KEY = localStorage.getItem(KEY_STORE) || localStorage.getItem(LEGACY_KEY_STORE) || '';
 
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
@@ -41,6 +42,9 @@ const emptyAction = $('emptyAction');
 const quotaEl = $('quota');
 const toastEl = $('toast');
 const sheet = $('sheet');
+const loginSheet = $('login');
+const loginPhase = $('loginPhase');
+const loginPhaseText = $('loginPhaseText');
 
 /* ---------- state ---------- */
 
@@ -244,11 +248,79 @@ async function loadDeck({ refresh = false, quiet = false } = {}) {
     if (err.status === 401) {
       showEmpty('Wrong access key', 'Open the link the server printed in the terminal.');
     } else if (/not signed in/i.test(err.message)) {
-      showEmpty('LinkedIn is not signed in', 'Paste your li_at cookie in Settings, or sign in in the Chrome window on your Mac.', { label: 'Open settings', run: openSheet });
+      showEmpty('LinkedIn is not signed in', 'Sign in once and the deck fills up.', { label: 'Sign in to LinkedIn', run: startLogin });
     } else {
       showEmpty('Could not load suggestions', friendly(err), { label: 'Retry', run: () => loadDeck({ refresh: true }) });
     }
   }
+}
+
+/* ---------- sign-in ---------- */
+
+// The password is typed into LinkedIn's own page in Chrome on the Mac — never
+// into this app. All we wait for is the session cookie that login leaves behind.
+const LOGIN_TIMEOUT = 10 * 60 * 1000;
+const PHASE_TEXT = {
+  waiting: 'Waiting for you to sign in, in the Chrome window on your Mac…',
+  checkpoint: 'LinkedIn wants a verification code — answer it in that Chrome window.',
+  done: 'Signed in. Session captured.',
+};
+
+let loginTimer = null;
+
+function setPhase(text, kind = '') {
+  loginPhaseText.textContent = text;
+  loginPhase.className = `phase ${kind}`;
+}
+
+function closeLogin() {
+  clearTimeout(loginTimer);
+  loginTimer = null;
+  loginSheet.classList.add('hidden');
+}
+
+async function startLogin() {
+  closeSheet();
+  loginSheet.classList.remove('hidden');
+  setPhase('Opening LinkedIn in Chrome on your Mac…');
+  try {
+    const res = await api('/api/login', { method: 'POST' });
+    if (res.phase === 'done') return loginDone();
+    setPhase(PHASE_TEXT[res.phase] || PHASE_TEXT.waiting);
+    pollLogin(Date.now() + LOGIN_TIMEOUT);
+  } catch (err) {
+    setPhase(friendly(err), 'bad');
+  }
+}
+
+function pollLogin(deadline) {
+  clearTimeout(loginTimer);
+  loginTimer = setTimeout(async () => {
+    if (loginSheet.classList.contains('hidden')) return;
+    try {
+      const res = await api('/api/login/status');
+      if (res.phase === 'done') return loginDone();
+      setPhase(PHASE_TEXT[res.phase] || PHASE_TEXT.waiting);
+    } catch (err) {
+      setPhase(friendly(err), 'bad');
+    }
+    if (Date.now() > deadline) {
+      setPhase('Stopped waiting. Tap Sign in again when you have finished in Chrome.', 'bad');
+      return;
+    }
+    pollLogin(deadline);
+  }, 2000);
+}
+
+function loginDone() {
+  clearTimeout(loginTimer);
+  loginTimer = null;
+  setPhase(PHASE_TEXT.done, 'done');
+  toast('Signed in to LinkedIn', 'good');
+  setTimeout(() => loginSheet.classList.add('hidden'), 800);
+  cards = [];
+  loadDeck({ refresh: true });
+  refreshState();
 }
 
 /* ---------- settings ---------- */
@@ -257,9 +329,11 @@ async function refreshState() {
   try {
     const s = await api('/api/state');
     paintQuota(s.quota);
-    $('sessionState').textContent = s.linkedIn?.loggedIn
-      ? 'Signed in and ready.'
+    const li = s.linkedIn || {};
+    $('sessionState').textContent = li.loggedIn
+      ? `Signed in and ready.${li.cookiePreview ? ` Session cookie li_at ${li.cookiePreview}.` : ''}`
       : 'Not signed in to LinkedIn.';
+    $('signIn').textContent = li.loggedIn ? 'Sign in again' : 'Sign in to LinkedIn';
     $('maxPerHour').value = s.settings.maxPerHour;
     $('maxPerDay').value = s.settings.maxPerDay;
     $('minGapSeconds').value = s.settings.minGapSeconds;
@@ -285,6 +359,9 @@ $('btnUndo').onclick = async () => {
     await loadDeck();
   } catch (err) { toast(friendly(err), 'bad'); }
 };
+
+$('signIn').onclick = startLogin;
+$('loginCancel').onclick = closeLogin;
 
 $('openSettings').onclick = openSheet;
 $('closeSettings').onclick = closeSheet;
@@ -321,14 +398,14 @@ $('refreshDeck').onclick = () => { closeSheet(); cards = []; loadDeck({ refresh:
 quotaEl.onclick = openSheet;
 
 document.addEventListener('keydown', (e) => {
-  if (!sheet.classList.contains('hidden')) return;
+  if (!sheet.classList.contains('hidden') || !loginSheet.classList.contains('hidden')) return;
   if (e.key === 'ArrowLeft') swipeTop('left');
   if (e.key === 'ArrowRight') swipeTop('right');
 });
 
 // iOS: stop the page itself from panning behind the deck.
 document.addEventListener('touchmove', (e) => {
-  if (sheet.classList.contains('hidden')) e.preventDefault();
+  if (sheet.classList.contains('hidden') && loginSheet.classList.contains('hidden')) e.preventDefault();
 }, { passive: false });
 
 refreshState();
