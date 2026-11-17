@@ -227,13 +227,18 @@ async function handleApi(req, res, url) {
   return json(res, 404, { error: 'No such endpoint.' });
 }
 
+// A request line is written by whoever made the request. Nothing from it
+// reaches the log with a newline, an escape sequence, or any length it likes.
+const forLog = (value) => String(value).replace(/[^\x20-\x7e]/g, '?').slice(0, 120);
+
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (url.pathname.startsWith('/api/')) {
     const started = Date.now();
-    res.on('finish', () => console.log(`  ${req.method} ${url.pathname} -> ${res.statusCode} (${Date.now() - started}ms)`));
+    const line = `${forLog(req.method)} ${forLog(url.pathname)}`;
+    res.on('finish', () => console.log(`  ${line} -> ${res.statusCode} (${Date.now() - started}ms)`));
     handleApi(req, res, url).catch((err) => {
-      console.error(`  ${req.method} ${url.pathname} failed:`, err.message);
+      console.error(`  ${line} failed:`, err.message);
       if (!res.headersSent) json(res, 500, { error: err.message });
     });
   } else {
