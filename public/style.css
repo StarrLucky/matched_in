@@ -117,7 +117,9 @@ button { font: inherit; cursor: pointer; }
   display: grid; place-items: center;
   background: linear-gradient(160deg, #182232, #0f1620);
 }
-.card-backdrop + .card-portrait { background: none; }
+/* The backdrop element is always in the card now, so the gradient only gives
+   way when it actually carries an image. */
+.card-backdrop:not(.hidden) + .card-portrait { background: none; }
 .card-avatar {
   width: min(58vw, 208px);
   aspect-ratio: 1;

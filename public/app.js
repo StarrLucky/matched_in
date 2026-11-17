@@ -126,6 +126,11 @@ function askForKey(title = 'Access key needed') {
 
 /* ---------- rendering ---------- */
 
+/** Scraped URLs are only ever loaded when they are plainly https. */
+function safeImageUrl(url) {
+  return /^https:\/\/[^\s"'()<>]+$/i.test(url || '') ? url : null;
+}
+
 function buildCard(card, depth) {
   const el = document.createElement('article');
   el.className = 'card';
@@ -133,29 +138,52 @@ function buildCard(card, depth) {
   el.dataset.slug = card.slug;
 
   const initial = (card.name || '?').trim().charAt(0).toUpperCase();
-  // LinkedIn avatars top out at 400px, so blowing one up full-bleed looks mushy.
-  // A blurred copy fills the card and the crisp original sits on top.
-  const backdrop = card.banner || card.photo;
+  // Everything on a card was scraped off a web page. None of it is interpolated
+  // into this markup — the shell is a constant, and every value goes in through
+  // the DOM below, as text or through a property.
   el.innerHTML = `
-    ${backdrop ? `<div class="card-backdrop" style="background-image:url(${JSON.stringify(backdrop)})"></div>` : ''}
+    <div class="card-backdrop hidden"></div>
     <div class="card-portrait">
-      ${card.photo
-        ? `<img class="card-avatar" src=${JSON.stringify(card.photo)} alt="" referrerpolicy="no-referrer" loading="eager">`
-        : `<div class="card-avatar card-initial">${initial}</div>`}
+      <img class="card-avatar hidden" alt="" referrerpolicy="no-referrer" loading="eager">
+      <div class="card-avatar card-initial hidden"></div>
     </div>
     <div class="card-shade"></div>
     <div class="stamp stamp-yes">CONNECT</div>
     <div class="stamp stamp-no">SKIP</div>
     <div class="card-body">
-      <h2 class="card-name"><span class="nm"></span>${card.degree ? `<span class="card-degree">${card.degree}</span>` : ''}</h2>
-      ${card.headline ? '<p class="card-headline"></p>' : ''}
-      ${card.mutuals ? '<p class="card-mutuals"></p>' : ''}
+      <h2 class="card-name"><span class="nm"></span><span class="card-degree hidden"></span></h2>
+      <p class="card-headline hidden"></p>
+      <p class="card-mutuals hidden"></p>
     </div>`;
 
-  // Text goes in as text, never as markup — these strings come off a web page.
-  el.querySelector('.nm').textContent = card.name || 'Unknown';
-  if (card.headline) el.querySelector('.card-headline').textContent = card.headline;
-  if (card.mutuals) el.querySelector('.card-mutuals').textContent = card.mutuals;
+  const show = (selector, text) => {
+    const node = el.querySelector(selector);
+    if (text) { node.textContent = text; node.classList.remove('hidden'); }
+    return node;
+  };
+
+  show('.nm', card.name || 'Unknown');
+  show('.card-degree', card.degree);
+  show('.card-headline', card.headline);
+  show('.card-mutuals', card.mutuals);
+
+  // A URL off that page is only ever https, and it is set as a property, never
+  // written into an attribute.
+  const photo = safeImageUrl(card.photo);
+  const backdrop = safeImageUrl(card.banner) || photo;
+  if (photo) {
+    el.querySelector('.card-avatar').src = photo;
+    el.querySelector('.card-avatar').classList.remove('hidden');
+  } else {
+    show('.card-initial', initial);
+  }
+  // LinkedIn avatars top out at 400px, so blowing one up full-bleed looks mushy.
+  // A blurred copy fills the card and the crisp original sits on top.
+  if (backdrop) {
+    const layer = el.querySelector('.card-backdrop');
+    layer.style.backgroundImage = `url("${encodeURI(backdrop)}")`;
+    layer.classList.remove('hidden');
+  }
 
   if (depth === 0) attachDrag(el);
   return el;

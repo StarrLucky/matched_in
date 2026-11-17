@@ -1,25 +1,31 @@
 # matched_in — the quality gates.
 #
-#   make          lint, unit tests, end-to-end tests
+#   make          lint, security, unit tests, end-to-end tests
 #   make help     everything you can run
 #
-# No dependencies to install: the linter and both test suites are plain Node.
+# No dependencies to install: the linter, the security gate and both test suites
+# are plain Node. The optional scanners (gitleaks, semgrep, sonar-scanner) are
+# used when they are on your machine and skipped with a note when they are not.
 
 NODE ?= node
 UNIT := test/unit/*.test.mjs
 E2E  := test/e2e/*.test.mjs
 
 .DEFAULT_GOAL := check
-.PHONY: check lint unit e2e test run demo clean help node-version
+.PHONY: check lint security unit e2e test coverage sonar run demo clean help node-version
 
 ## check: the full gate — run this before you commit
-check: lint unit e2e
+check: lint security unit e2e
 	@echo ""
-	@echo "  ✓ lint, unit and end-to-end all pass"
+	@echo "  ✓ lint, security, unit and end-to-end all pass"
 
 ## lint: every file parses, including the snippets injected into the page
 lint: node-version
 	@$(NODE) scripts/lint.mjs
+
+## security: secrets, this app's own invariants, and any scanner you have installed
+security: node-version
+	@$(NODE) scripts/security.mjs
 
 ## unit: the store and the LinkedIn driver, with the page faked out
 unit: node-version
@@ -32,6 +38,37 @@ e2e: node-version
 ## test: both test suites, without the linter
 test: unit e2e
 
+## coverage: coverage/lcov.info from the unit suite, for Sonar
+coverage: node-version
+	@mkdir -p coverage
+	@$(NODE) --test --experimental-test-coverage \
+	  --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \
+	  --test-reporter=dot --test-reporter-destination=stdout $(UNIT)
+	@echo "  coverage/lcov.info"
+
+## sonar: SonarQube analysis — needs SONAR_HOST_URL and SONAR_TOKEN
+sonar: coverage
+	@if [ -z "$$SONAR_TOKEN" ]; then \
+	  echo "  SONAR_TOKEN is not set."; \
+	  echo "  SonarCloud: make a token at https://sonarcloud.io/account/security, then"; \
+	  echo "    SONAR_HOST_URL=https://sonarcloud.io SONAR_TOKEN=… make sonar"; \
+	  echo "  A server of your own: docker run -d -p 9000:9000 sonarqube:lts-community"; \
+	  exit 1; \
+	fi; \
+	if command -v sonar-scanner >/dev/null 2>&1; then \
+	  sonar-scanner -Dsonar.host.url="$${SONAR_HOST_URL:-https://sonarcloud.io}" -Dsonar.token="$$SONAR_TOKEN"; \
+	elif command -v docker >/dev/null 2>&1; then \
+	  echo "  sonar-scanner not installed — running it in Docker."; \
+	  docker run --rm \
+	    -e SONAR_HOST_URL="$${SONAR_HOST_URL:-https://sonarcloud.io}" \
+	    -e SONAR_TOKEN="$$SONAR_TOKEN" \
+	    -v "$(CURDIR):/usr/src" sonarsource/sonar-scanner-cli; \
+	else \
+	  echo "  Neither sonar-scanner nor docker is installed."; \
+	  echo "  brew install sonar-scanner"; \
+	  exit 1; \
+	fi
+
 ## run: start the app against LinkedIn
 run: node-version
 	@$(NODE) server/server.mjs
@@ -40,16 +77,17 @@ run: node-version
 demo: node-version
 	@DEMO=1 $(NODE) server/server.mjs
 
-## clean: remove the throwaway profiles and state the tests leave behind
+## clean: remove the coverage report and the throwaway profiles the tests leave
 clean:
-	@rm -rf "$${TMPDIR:-/tmp}"/matched-in-e2e-* "$${TMPDIR:-/tmp}"/matched-in-ui-* "$${TMPDIR:-/tmp}"/matched-in-store-*
+	@rm -rf coverage
+	@rm -rf "$${TMPDIR:-/tmp}"/matched-in-e2e-* "$${TMPDIR:-/tmp}"/matched-in-ui-* "$${TMPDIR:-/tmp}"/matched-in-store-* "$${TMPDIR:-/tmp}"/matched-in-shots-*
 	@echo "  cleaned up test leftovers"
 
 # The e2e tests drive Chrome through CDP and the server uses fetch and WebSocket
 # from the platform, so an old Node fails in confusing ways rather than clearly.
 node-version:
 	@$(NODE) -e 'const major = Number(process.versions.node.split(".")[0]); \
-	  if (major < 22) { console.error(`  Node 22+ required — this is ${process.versions.node}`); process.exit(1); }'
+	  if (major < 22) { console.error(`  Node 22+ required — this is $${process.versions.node}`); process.exit(1); }'
 
 help:
 	@echo ""

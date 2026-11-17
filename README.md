@@ -157,10 +157,42 @@ make help     # everything you can run
 | | |
 |---|---|
 | `make lint` | A dependency-free linter: every file parses, house rules hold, and the snippets that run inside the LinkedIn page compile — those live in template strings, so no parser would otherwise see them |
+| `make security` | Secrets and this app's own invariants (below) |
 | `make unit` | The throttling in the store and the driver's decisions, with the page faked out |
 | `make e2e` | The server over real HTTP in demo mode, and the app in headless Chrome — down to a real drag on a card |
+| `make coverage` | `coverage/lcov.info` from the unit suite |
+| `make sonar` | SonarQube or SonarCloud analysis — needs `SONAR_TOKEN` |
 | `make demo` | The app on fixture profiles |
-| `make clean` | Throwaway profiles the tests leave behind |
+| `make clean` | The coverage report and the throwaway profiles the tests leave behind |
+
+### The security gate
+
+`make security` is part of `make check`. It scans the tracked files for anything shaped like a
+secret — a LinkedIn `li_at` cookie above all — and checks that runtime state, keys and environment
+files are not committed. Then it checks the things that are specific to this app and that no generic
+scanner knows about:
+
+- every `/api/*` call is refused before dispatch unless the access key matches
+- static files cannot escape `public/`
+- the module that handles the session cookie cannot write to the history file, and the cookie is
+  never printed or returned
+- Chrome is never launched with its protections turned off
+- a profile slug cannot break out of the snippets that run inside the LinkedIn page — each snippet
+  is built with a hostile slug and has to survive it
+- nothing scraped off LinkedIn is interpolated into the card's markup, and scraped image URLs are
+  only loaded when they are plainly `https`
+
+If **gitleaks**, **semgrep** or an `npm audit` lockfile are there, those run too; if not, each is
+skipped with a line saying so, and the gate still holds on its own.
+
+SonarQube is configured in [sonar-project.properties](sonar-project.properties) and reads the lcov
+report, so run `make sonar` with your server and token:
+
+```bash
+SONAR_HOST_URL=https://sonarcloud.io SONAR_TOKEN=… make sonar
+```
+
+It uses `sonar-scanner` if you have it and falls back to the official Docker image if you don't.
 
 Nothing in the suite touches LinkedIn or your session: the tests get their own `DATA_DIR` and their
 own Chrome profile, and demo mode never opens LinkedIn at all.

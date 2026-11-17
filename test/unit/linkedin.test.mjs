@@ -8,7 +8,9 @@ import assert from 'node:assert/strict';
 import { LinkedIn, FEED_URL, LOGIN_URL } from '../../server/linkedin.mjs';
 import { FakeBrowser } from '../helpers/fake-browser.mjs';
 
-const COOKIE = 'AQEDAREALLONGCOOKIEVALUE0123456789wxyz';
+// Deliberately unlike a real li_at value: the security gate scans this repo for
+// anything shaped like a session cookie.
+const COOKIE = 'not-a-real-session-value-0123456789wxyz';
 
 // Short fuses so the polling loops finish inside a test run.
 const driver = (browser, opts = {}) => new LinkedIn(browser, { inviteTimeout: 1500, retryAfter: 400, ...opts });
@@ -110,7 +112,7 @@ test('status trusts the cookie and reloads a stale page once', async () => {
 
   assert.equal(state.loggedIn, true);
   assert.equal(state.cookie, true);
-  assert.equal(state.cookiePreview, 'AQED…wxyz', 'the preview shows the ends only');
+  assert.equal(state.cookiePreview, 'not-…wxyz', 'the preview shows the ends only');
   assert.deepEqual(page.navigations, [FEED_URL]);
 });
 
@@ -176,7 +178,7 @@ test('loginStatus parks the tab on the suggestions once signed in', async () => 
   const state = await driver(page).loginStatus();
 
   assert.equal(state.phase, 'done');
-  assert.equal(state.cookiePreview, 'AQED…wxyz');
+  assert.equal(state.cookiePreview, 'not-…wxyz');
   assert.deepEqual(page.navigations, [FEED_URL]);
 });
 
