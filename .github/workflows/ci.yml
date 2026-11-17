@@ -1,0 +1,133 @@
+name: check
+
+# The same gates as `make check` on a laptop, one step per target so a failure
+# says which one. The end-to-end job needs a real Chrome, which the Ubuntu
+# runner image already carries.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  lint:
+    name: make lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: make lint
+
+  security:
+    name: make security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks reads the history, not just the checkout.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The gate runs gitleaks when it is on PATH and skips it with a note when
+      # it is not, so installing it here is all that is needed to switch it on.
+      - name: Install gitleaks
+        run: |
+          version=8.30.1
+          mkdir -p "$HOME/bin"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | tar -xz -C "$HOME/bin" gitleaks
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/gitleaks" version
+
+      - run: make security
+
+  unit:
+    name: make unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: make unit
+
+  e2e:
+    name: make e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The UI test drives a real browser over CDP. Without one it skips itself,
+      # which would quietly hollow out this job — so fail loudly instead.
+      - name: Find Chrome
+        run: |
+          for candidate in /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium; do
+            if [ -x "$candidate" ]; then
+              echo "CHROME_BIN=$candidate" >> "$GITHUB_ENV"
+              "$candidate" --version
+              exit 0
+            fi
+          done
+          echo "No Chrome on this runner — the UI test would skip itself." >&2
+          exit 1
+
+      - run: make e2e
+
+  coverage:
+    name: make coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: make coverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+
+  sonar:
+    name: make sonar
+    runs-on: ubuntu-latest
+    needs: [lint, security, unit, e2e]
+    # Analysis of a pull request from a fork cannot see the token anyway.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Sonar wants the history to date its findings.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Analyse
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::notice::SONAR_TOKEN is not set — skipping SonarQube. Add it in Settings → Secrets → Actions."
+            exit 0
+          fi
+          make sonar

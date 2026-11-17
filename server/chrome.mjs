@@ -7,10 +7,17 @@ import { dirname } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const CHROME_PATHS = [
+  // macOS, where this app is meant to run.
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
   '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
   '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+  // Linux, so the end-to-end tests have a browser on a CI runner.
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/snap/bin/chromium',
 ];
 
 export function findChrome() {

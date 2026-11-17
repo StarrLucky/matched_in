@@ -1,5 +1,7 @@
 # matched_in
 
+[![check](https://github.com/StarrLucky/matched_in/actions/workflows/ci.yml/badge.svg)](https://github.com/StarrLucky/matched_in/actions/workflows/ci.yml)
+
 A Tinder-style swipe deck for LinkedIn's connection suggestions, served from your Mac to your phone.
 
 Swipe **right** to send a connection request with no note. Swipe **left** to skip. That is the
@@ -193,6 +195,12 @@ SONAR_HOST_URL=https://sonarcloud.io SONAR_TOKEN=… make sonar
 ```
 
 It uses `sonar-scanner` if you have it and falls back to the official Docker image if you don't.
+
+Every one of these runs in CI as its own job — see
+[.github/workflows/ci.yml](.github/workflows/ci.yml). The runner installs gitleaks, so the secret
+scan covers the git history there even if you don't have it locally, and the end-to-end job fails
+rather than skipping when it cannot find a browser. SonarQube runs when a `SONAR_TOKEN` secret is
+set and reports a skip when it is not.
 
 Nothing in the suite touches LinkedIn or your session: the tests get their own `DATA_DIR` and their
 own Chrome profile, and demo mode never opens LinkedIn at all.
