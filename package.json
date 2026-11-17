@@ -1,9 +1,14 @@
 {
   "name": "matched_in",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "description": "matched_in — Tinder-style swipe deck for LinkedIn connection suggestions, served to your iPhone from your Mac.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StarrLucky/matched_in.git"
+  },
+  "homepage": "https://github.com/StarrLucky/matched_in#readme",
   "scripts": {
     "start": "node server/server.mjs",
     "demo": "DEMO=1 node server/server.mjs",

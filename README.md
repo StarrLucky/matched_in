@@ -197,6 +197,11 @@ there is nothing to show until it refreshes.
 **Nothing works while the Mac is asleep.** The Mac has to stay awake with that Chrome window open —
 the phone is only a screen for it.
 
+## License
+
+MIT — see [LICENSE](LICENSE). It covers this code only: what you do with LinkedIn is between you
+and LinkedIn.
+
 ## Limitations
 
 - macOS-first. The Chrome lookup covers the usual macOS paths; elsewhere, set `CHROME_BIN` — untested.
