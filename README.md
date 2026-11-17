@@ -1,6 +1,7 @@
 # matched_in
 
 [![check](https://github.com/StarrLucky/matched_in/actions/workflows/ci.yml/badge.svg)](https://github.com/StarrLucky/matched_in/actions/workflows/ci.yml)
+[![quality gate](https://sonarcloud.io/api/project_badges/measure?project=StarrLucky_matched_in&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=StarrLucky_matched_in)
 
 A Tinder-style swipe deck for LinkedIn's connection suggestions, served from your Mac to your phone.
 
