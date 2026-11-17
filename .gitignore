@@ -3,3 +3,8 @@
 data/
 
 node_modules/
+
+# Editor and tool state, not part of the project.
+.idea/
+.claude/
+.DS_Store
