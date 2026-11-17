@@ -85,9 +85,10 @@ clean:
 
 # The e2e tests drive Chrome through CDP and the server uses fetch and WebSocket
 # from the platform, so an old Node fails in confusing ways rather than clearly.
+# One line on purpose: a backslash continuation inside the quotes survives into
+# the JavaScript on GNU make 4, and Node then chokes on the stray backslash.
 node-version:
-	@$(NODE) -e 'const major = Number(process.versions.node.split(".")[0]); \
-	  if (major < 22) { console.error(`  Node 22+ required — this is $${process.versions.node}`); process.exit(1); }'
+	@$(NODE) -e 'if (Number(process.versions.node.split(".")[0]) < 22) { console.error("  Node 22+ required, this is " + process.versions.node); process.exit(1); }'
 
 help:
 	@echo ""
