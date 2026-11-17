@@ -32,7 +32,7 @@ export function findChrome() {
 // the endpoint is rebuilt from loopback and the port we started Chrome on.
 const DEVTOOLS_PATH = /^\/devtools\/(page|browser)\/([A-Za-z0-9-]{1,128})$/;
 
-function devtoolsEndpoint(reported, port) {
+export function devtoolsEndpoint(reported, port) {
   let path;
   try { path = new URL(reported).pathname; }
   catch { throw new Error('Chrome handed back an address that is not a URL.'); }
