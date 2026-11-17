@@ -26,10 +26,27 @@ export function findChrome() {
   return CHROME_PATHS.find(existsSync) || null;
 }
 
+/**
+ * The debugging endpoint comes back from Chrome's own HTTP interface, but that
+ * interface is reachable by anything on this machine, so the address is checked
+ * rather than trusted: our Chrome, on loopback, on the port we started it on.
+ */
+function loopbackSocketUrl(url, port) {
+  let parsed;
+  try { parsed = new URL(url); }
+  catch { throw new Error('Chrome handed back an address that is not a URL.'); }
+
+  const local = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(parsed.hostname);
+  if (parsed.protocol !== 'ws:' || !local || Number(parsed.port) !== Number(port)) {
+    throw new Error(`Refusing to open a debugging socket to ${parsed.protocol}//${parsed.host}`);
+  }
+  return parsed.href;
+}
+
 /** One JSON-RPC connection to a CDP target. */
 class CdpSocket {
-  constructor(url) {
-    this.url = url;
+  constructor(url, port) {
+    this.url = loopbackSocketUrl(url, port);
     this.nextId = 1;
     this.pending = new Map();
     this.ws = null;
@@ -218,7 +235,7 @@ export class Browser {
     }
     if (!target?.webSocketDebuggerUrl) throw new Error('No debuggable Chrome tab available.');
     this.targetId = target.id;
-    this.page = new CdpSocket(target.webSocketDebuggerUrl);
+    this.page = new CdpSocket(target.webSocketDebuggerUrl, this.port);
     await this.page.open();
     await this.page.send('Page.enable').catch(() => {});
     await this.page.send('Runtime.enable').catch(() => {});
@@ -309,7 +326,7 @@ export class Browser {
     if (this.browserPipe?.connected) return this.browserPipe;
     const version = await httpJson(`${this.base}/json/version`);
     if (!version.webSocketDebuggerUrl) throw new Error('No browser-level CDP endpoint.');
-    this.browserPipe = new CdpSocket(version.webSocketDebuggerUrl);
+    this.browserPipe = new CdpSocket(version.webSocketDebuggerUrl, this.port);
     await this.browserPipe.open();
     return this.browserPipe;
   }

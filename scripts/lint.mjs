@@ -9,6 +9,8 @@ import { join, relative, extname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { parseError } from './parses.mjs';
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SKIP_DIRS = new Set(['node_modules', 'data', '.git', '.idea']);
 
@@ -30,7 +32,8 @@ const flag = (file, line, rule, message) =>
 const RULES = [
   {
     name: 'no-debugger',
-    test: (l) => /(^|[^\w.])debugger\s*;?\s*$/.test(l),
+    // Trim first: a pattern ending in \s*;?\s*$ backtracks on a long line.
+    test: (l) => /(^|[^\w.])debugger;?$/.test(l.trimEnd()),
     message: 'debugger statement left in',
   },
   {
@@ -55,7 +58,8 @@ const RULES = [
   },
   {
     name: 'no-trailing-whitespace',
-    test: (l) => /[ \t]+$/.test(l),
+    // One character is enough to know, and it cannot backtrack.
+    test: (l) => /[ \t]$/.test(l),
     message: 'trailing whitespace',
   },
 ];
@@ -88,11 +92,8 @@ for (const file of files) {
 const { pageSnippets } = await import(new URL('../server/linkedin.mjs', import.meta.url));
 for (const [name, snippet] of Object.entries(pageSnippets)) {
   const source = typeof snippet === 'function' ? snippet('probe-slug') : snippet;
-  try {
-    new Function(`return (async () => { ${source} })`);
-  } catch (err) {
-    flag(join(ROOT, 'server/linkedin.mjs'), 0, 'page-snippet', `${name}: ${err.message}`);
-  }
+  const error = parseError(source);
+  if (error) flag(join(ROOT, 'server/linkedin.mjs'), 0, 'page-snippet', `${name}: ${error}`);
 }
 
 if (!problems.length) {

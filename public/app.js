@@ -18,15 +18,25 @@ const remember = {
   },
 };
 
+// The key is printed by the server and arrives in a link. It is hex-ish and
+// short, so anything that is not goes no further — neither into storage nor
+// into a request header.
+const KEY_SHAPE = /^[\x21-\x7e]{6,128}$/;   // printable, no spaces, nothing exotic
+const asKey = (value) => {
+  const trimmed = String(value ?? '').trim();
+  return KEY_SHAPE.test(trimmed) ? trimmed : '';
+};
+
 const params = new URLSearchParams(location.search);
-if (params.get('k')) {
-  remember.set(KEY_STORE, params.get('k'));
+const fromLink = asKey(params.get('k'));
+if (fromLink) {
+  remember.set(KEY_STORE, fromLink);
   history.replaceState(null, '', location.pathname);
 }
 
 // Not const: added to the home screen, iOS gives the app its own storage, so
 // the key often has to be typed in once on the phone itself.
-let KEY = remember.get(KEY_STORE) || remember.get(LEGACY_KEY_STORE) || '';
+let KEY = asKey(remember.get(KEY_STORE)) || asKey(remember.get(LEGACY_KEY_STORE));
 
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
@@ -261,7 +271,7 @@ function flyOut(el, dir) {
   const card = cards.find((c) => c.slug === slug);
   cards = cards.filter((c) => c.slug !== slug);
 
-  setTimeout(() => { render(); commit(card, dir); }, 300);
+  setTimeout(() => { render(); void commit(card, dir); }, 300);
 }
 
 function swipeTop(dir) {
@@ -293,7 +303,7 @@ async function commit(card, dir) {
     toast(friendly(err), 'bad');
   } finally {
     busy = false;
-    if (cards.length <= 3) loadDeck({ quiet: true });
+    if (cards.length <= 3) void loadDeck({ quiet: true });
     if (!cards.length) showEmpty('No more suggestions', 'LinkedIn has run out for now.', { label: 'Reload', run: () => loadDeck({ refresh: true }) });
   }
 }
@@ -395,8 +405,8 @@ function loginDone() {
   toast('Signed in to LinkedIn', 'good');
   setTimeout(() => loginSheet.classList.add('hidden'), 800);
   cards = [];
-  loadDeck({ refresh: true });
-  refreshState();
+  void loadDeck({ refresh: true });
+  void refreshState();
 }
 
 /* ---------- settings ---------- */
@@ -421,7 +431,7 @@ async function refreshState() {
   }
 }
 
-function openSheet() { sheet.classList.remove('hidden'); refreshState(); }
+function openSheet() { sheet.classList.remove('hidden'); void refreshState(); }
 function closeSheet() { sheet.classList.add('hidden'); }
 
 /* ---------- wiring ---------- */
@@ -442,14 +452,14 @@ on('btnUndo', 'click', async () => {
 
 on('keyForm', 'submit', (e) => {
   e.preventDefault();
-  const value = keyInput.value.trim().replace(/^.*[?&]k=/, '');
+  const value = asKey(keyInput.value.trim().replace(/^.*[?&]k=/, ''));
   if (!value) return toast('Paste the key, or the whole link.');
   KEY = value;
   remember.set(KEY_STORE, value);
   keyForm.classList.add('hidden');
   showEmpty('Loading suggestions…');
-  refreshState();
-  loadDeck();
+  void refreshState();
+  void loadDeck();
 });
 
 on('signIn', 'click', startLogin);
@@ -468,7 +478,7 @@ on('saveSession', 'click', async () => {
     const res = await api('/api/session', { method: 'POST', body: { li_at: value } });
     $('liAt').value = '';
     $('sessionState').textContent = res.linkedIn?.loggedIn ? 'Signed in and ready.' : 'LinkedIn did not accept that cookie.';
-    if (res.linkedIn?.loggedIn) { closeSheet(); cards = []; loadDeck({ refresh: true }); }
+    if (res.linkedIn?.loggedIn) { closeSheet(); cards = []; void loadDeck({ refresh: true }); }
   } catch (err) { $('sessionState').textContent = friendly(err); }
 });
 
@@ -487,7 +497,7 @@ on('saveLimits', 'click', async () => {
   } catch (err) { toast(friendly(err), 'bad'); }
 });
 
-on('refreshDeck', 'click', () => { closeSheet(); cards = []; loadDeck({ refresh: true }); });
+on('refreshDeck', 'click', () => { closeSheet(); cards = []; void loadDeck({ refresh: true }); });
 on('quota', 'click', openSheet);
 
 document.addEventListener('keydown', (e) => {
@@ -503,8 +513,8 @@ document.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 if (KEY) {
-  refreshState();
-  loadDeck();
+  void refreshState();
+  void loadDeck();
 } else {
   askForKey('Access key needed');
 }

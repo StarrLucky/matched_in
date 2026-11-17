@@ -14,6 +14,8 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { parseError } from './parses.mjs';
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
@@ -99,9 +101,11 @@ if (!server.includes('file.startsWith(PUBLIC)')) {
 if (/from '\.\/store\.mjs'/.test(linkedin)) {
   fail('server/linkedin.mjs', 'the LinkedIn driver can now write to the store — the cookie could land in state.json');
 }
-if (/(console\.\w+|res\.end|json\()[^\n]*\bli_at\b/.test(linkedin + server)) {
-  fail('server', 'the session cookie is printed or returned somewhere');
-}
+// Line by line: one pattern across the whole file would backtrack badly.
+const leaksCookie = `${linkedin}\n${server}`.split('\n').some(
+  (line) => /\bli_at\b/.test(line) && /(console\.\w+\(|res\.end\(|json\()/.test(line),
+);
+if (leaksCookie) fail('server', 'the session cookie is printed or returned somewhere');
 
 // 6. Nothing may turn off the browser's own protections.
 const WEAKENING = [
@@ -125,9 +129,7 @@ const { pageSnippets } = await import(new URL('../server/linkedin.mjs', import.m
 for (const [name, snippet] of Object.entries(pageSnippets)) {
   if (typeof snippet !== 'function') continue;
   const source = snippet(HOSTILE);
-  try {
-    new Function(`return (async () => { ${source} })`);
-  } catch {
+  if (parseError(source)) {
     fail(`server/linkedin.mjs (${name})`, 'a profile slug can break out of the page snippet');
     continue;
   }
