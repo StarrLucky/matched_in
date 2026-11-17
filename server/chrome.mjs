@@ -26,27 +26,28 @@ export function findChrome() {
   return CHROME_PATHS.find(existsSync) || null;
 }
 
-/**
- * The debugging endpoint comes back from Chrome's own HTTP interface, but that
- * interface is reachable by anything on this machine, so the address is checked
- * rather than trusted: our Chrome, on loopback, on the port we started it on.
- */
-function loopbackSocketUrl(url, port) {
-  let parsed;
-  try { parsed = new URL(url); }
+// A debugging endpoint comes back from Chrome's own HTTP interface, and that
+// interface answers anything on this machine. So nothing of what it returns is
+// used as an address: only the target's kind and id are taken out of it, and
+// the endpoint is rebuilt from loopback and the port we started Chrome on.
+const DEVTOOLS_PATH = /^\/devtools\/(page|browser)\/([A-Za-z0-9-]{1,128})$/;
+
+function devtoolsEndpoint(reported, port) {
+  let path;
+  try { path = new URL(reported).pathname; }
   catch { throw new Error('Chrome handed back an address that is not a URL.'); }
 
-  const local = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(parsed.hostname);
-  if (parsed.protocol !== 'ws:' || !local || Number(parsed.port) !== Number(port)) {
-    throw new Error(`Refusing to open a debugging socket to ${parsed.protocol}//${parsed.host}`);
-  }
-  return parsed.href;
+  const parts = DEVTOOLS_PATH.exec(path);
+  if (!parts) throw new Error('Chrome returned a debugging path this app does not recognise.');
+
+  const kind = parts[1] === 'browser' ? 'browser' : 'page';
+  return `ws://127.0.0.1:${Number(port)}/devtools/${kind}/${parts[2]}`;
 }
 
 /** One JSON-RPC connection to a CDP target. */
 class CdpSocket {
   constructor(url, port) {
-    this.url = loopbackSocketUrl(url, port);
+    this.url = devtoolsEndpoint(url, port);
     this.nextId = 1;
     this.pending = new Map();
     this.ws = null;
