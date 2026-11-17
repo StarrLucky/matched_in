@@ -55,14 +55,16 @@ sonar: coverage
 	  echo "  A server of your own: docker run -d -p 9000:9000 sonarqube:lts-community"; \
 	  exit 1; \
 	fi; \
+	org=""; \
+	if [ -n "$$SONAR_ORGANIZATION" ]; then org="-Dsonar.organization=$$SONAR_ORGANIZATION"; fi; \
 	if command -v sonar-scanner >/dev/null 2>&1; then \
-	  sonar-scanner -Dsonar.host.url="$${SONAR_HOST_URL:-https://sonarcloud.io}" -Dsonar.token="$$SONAR_TOKEN"; \
+	  sonar-scanner -Dsonar.host.url="$${SONAR_HOST_URL:-https://sonarcloud.io}" -Dsonar.token="$$SONAR_TOKEN" $$org; \
 	elif command -v docker >/dev/null 2>&1; then \
 	  echo "  sonar-scanner not installed — running it in Docker."; \
 	  docker run --rm \
 	    -e SONAR_HOST_URL="$${SONAR_HOST_URL:-https://sonarcloud.io}" \
 	    -e SONAR_TOKEN="$$SONAR_TOKEN" \
-	    -v "$(CURDIR):/usr/src" sonarsource/sonar-scanner-cli; \
+	    -v "$(CURDIR):/usr/src" sonarsource/sonar-scanner-cli $$org; \
 	else \
 	  echo "  Neither sonar-scanner nor docker is installed."; \
 	  echo "  brew install sonar-scanner"; \
